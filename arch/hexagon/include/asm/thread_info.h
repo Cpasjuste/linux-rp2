@@ -1,21 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Thread support for the Hexagon architecture
  *
  * Copyright (c) 2010-2011, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
  */
 
 #ifndef _ASM_THREAD_INFO_H
@@ -47,7 +34,6 @@ typedef struct {
 
 struct thread_info {
 	struct task_struct	*task;		/* main task structure */
-	struct exec_domain      *exec_domain;   /* execution domain */
 	unsigned long		flags;          /* low level flags */
 	__u32                   cpu;            /* current cpu */
 	int                     preempt_count;  /* 0=>preemptible,<0=>BUG */
@@ -56,7 +42,6 @@ struct thread_info {
 	 * used for syscalls somehow;
 	 * seems to have a function pointer and four arguments
 	 */
-	struct restart_block    restart_block;
 	/* Points to the current pt_regs frame  */
 	struct pt_regs		*regs;
 	/*
@@ -78,20 +63,13 @@ struct thread_info {
 #define INIT_THREAD_INFO(tsk)                   \
 {                                               \
 	.task           = &tsk,                 \
-	.exec_domain    = &default_exec_domain, \
 	.flags          = 0,                    \
 	.cpu            = 0,                    \
 	.preempt_count  = 1,                    \
 	.addr_limit     = KERNEL_DS,            \
-	.restart_block = {                      \
-		.fn = do_no_restart_syscall,    \
-	},                                      \
 	.sp = 0,				\
 	.regs = NULL,			\
 }
-
-#define init_thread_info        (init_thread_union.thread_info)
-#define init_stack              (init_thread_union.stack)
 
 /* Tacky preprocessor trickery */
 #define	qqstr(s) qstr(s)

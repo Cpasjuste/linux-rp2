@@ -37,6 +37,9 @@
 #include <sys/stat.h>
 #include <mqueue.h>
 #include <popt.h>
+#include <error.h>
+
+#include "../kselftest.h"
 
 static char *usage =
 "Usage:\n"
@@ -536,10 +539,9 @@ int main(int argc, char *argv[])
 {
 	struct mq_attr attr;
 	char *option, *next_option;
-	int i, cpu;
+	int i, cpu, rc;
 	struct sigaction sa;
 	poptContext popt_context;
-	char rc;
 	void *retval;
 
 	main_thread = pthread_self();
@@ -626,12 +628,10 @@ int main(int argc, char *argv[])
 		cpus_to_pin[0] = cpus_online - 1;
 	}
 
-	if (getuid() != 0) {
-		fprintf(stderr, "Not running as root, but almost all tests "
+	if (getuid() != 0)
+		ksft_exit_skip("Not running as root, but almost all tests "
 			"require root in order to modify\nsystem settings.  "
 			"Exiting.\n");
-		exit(1);
-	}
 
 	max_msgs = fopen(MAX_MSGS, "r+");
 	max_msgsize = fopen(MAX_MSGSIZE, "r+");

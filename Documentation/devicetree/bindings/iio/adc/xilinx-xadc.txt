@@ -22,7 +22,6 @@ Required properties:
 	  clock to the AXI bus interface of the core.
 
 Optional properties:
-	- interrupt-parent: phandle to the parent interrupt controller
 	- xlnx,external-mux:
 		* "none": No external multiplexer is used, this is the default
 		  if the property is omitted.
@@ -59,7 +58,7 @@ Optional properties:
 	  Each child node represents one channel and has the following
 	  properties:
 		Required properties:
-			* reg: Pair of pins the the channel is connected to.
+			* reg: Pair of pins the channel is connected to.
 				0: VP/VN
 				1: VAUXP[0]/VAUXN[0]
 				2: VAUXP[1]/VAUXN[1]

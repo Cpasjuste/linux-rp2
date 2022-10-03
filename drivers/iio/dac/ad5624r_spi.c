@@ -1,9 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * AD5624R, AD5644R, AD5664R Digital to analog convertors spi driver
  *
  * Copyright 2010-2011 Analog Devices Inc.
- *
- * Licensed under the GPL-2.
  */
 
 #include <linux/interrupt.h>
@@ -19,10 +18,12 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 
+#include <asm/unaligned.h>
+
 #include "ad5624r.h"
 
 static int ad5624r_spi_write(struct spi_device *spi,
-			     u8 cmd, u8 addr, u16 val, u8 len)
+			     u8 cmd, u8 addr, u16 val, u8 shift)
 {
 	u32 data;
 	u8 msg[3];
@@ -35,12 +36,10 @@ static int ad5624r_spi_write(struct spi_device *spi,
 	 * 14-, 12-bit input code followed by 0, 2, or 4 don't care bits,
 	 * for the AD5664R, AD5644R, and AD5624R, respectively.
 	 */
-	data = (0 << 22) | (cmd << 19) | (addr << 16) | (val << (16 - len));
-	msg[0] = data >> 16;
-	msg[1] = data >> 8;
-	msg[2] = data;
+	data = (0 << 22) | (cmd << 19) | (addr << 16) | (val << shift);
+	put_unaligned_be24(data, &msg[0]);
 
-	return spi_write(spi, msg, 3);
+	return spi_write(spi, msg, sizeof(msg));
 }
 
 static int ad5624r_read_raw(struct iio_dev *indio_dev,
@@ -149,7 +148,6 @@ static ssize_t ad5624r_write_dac_powerdown(struct iio_dev *indio_dev,
 static const struct iio_info ad5624r_info = {
 	.write_raw = ad5624r_write_raw,
 	.read_raw = ad5624r_read_raw,
-	.driver_module = THIS_MODULE,
 };
 
 static const struct iio_chan_spec_ext_info ad5624r_ext_info[] = {
@@ -255,7 +253,6 @@ static int ad5624r_probe(struct spi_device *spi)
 
 	st->us = spi;
 
-	indio_dev->dev.parent = &spi->dev;
 	indio_dev->name = spi_get_device_id(spi)->name;
 	indio_dev->info = &ad5624r_info;
 	indio_dev->modes = INDIO_DIRECT_MODE;
@@ -306,7 +303,6 @@ MODULE_DEVICE_TABLE(spi, ad5624r_id);
 static struct spi_driver ad5624r_driver = {
 	.driver = {
 		   .name = "ad5624r",
-		   .owner = THIS_MODULE,
 		   },
 	.probe = ad5624r_probe,
 	.remove = ad5624r_remove,
