@@ -15,6 +15,7 @@
 #include <linux/phy.h>
 #include <linux/of_platform.h>
 #include <linux/slab.h>
+#include <linux/of_address.h>
 #include <linux/of_mdio.h>
 #include <asm/io.h>
 #include <asm/mpc52xx.h>
@@ -22,7 +23,6 @@
 
 struct mpc52xx_fec_mdio_priv {
 	struct mpc52xx_fec __iomem *regs;
-	int mdio_irqs[PHY_MAX_ADDR];
 };
 
 static int mpc52xx_fec_mdio_transfer(struct mii_bus *bus, int phy_id,
@@ -83,9 +83,6 @@ static int mpc52xx_fec_mdio_probe(struct platform_device *of)
 	bus->read = mpc52xx_fec_mdio_read;
 	bus->write = mpc52xx_fec_mdio_write;
 
-	/* setup irqs */
-	bus->irq = priv->mdio_irqs;
-
 	/* setup registers */
 	err = of_address_to_resource(np, 0, &res);
 	if (err)
@@ -134,7 +131,7 @@ static int mpc52xx_fec_mdio_remove(struct platform_device *of)
 	return 0;
 }
 
-static struct of_device_id mpc52xx_fec_mdio_match[] = {
+static const struct of_device_id mpc52xx_fec_mdio_match[] = {
 	{ .compatible = "fsl,mpc5200b-mdio", },
 	{ .compatible = "fsl,mpc5200-mdio", },
 	{ .compatible = "mpc5200b-fec-phy", },

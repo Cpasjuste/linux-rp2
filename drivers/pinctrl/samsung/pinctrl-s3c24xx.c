@@ -1,19 +1,14 @@
-/*
- * S3C24XX specific support for Samsung pinctrl/gpiolib driver.
- *
- * Copyright (c) 2013 Heiko Stuebner <heiko@sntech.de>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This file contains the SamsungS3C24XX specific information required by the
- * Samsung pinctrl/gpiolib driver. It also includes the implementation of
- * external gpio and wakeup interrupt support.
- */
+// SPDX-License-Identifier: GPL-2.0+
+//
+// S3C24XX specific support for Samsung pinctrl/gpiolib driver.
+//
+// Copyright (c) 2013 Heiko Stuebner <heiko@sntech.de>
+//
+// This file contains the SamsungS3C24XX specific information required by the
+// Samsung pinctrl/gpiolib driver. It also includes the implementation of
+// external gpio and wakeup interrupt support.
 
-#include <linux/module.h>
+#include <linux/init.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/irqdomain.h>
@@ -44,12 +39,12 @@
 #define EINT_EDGE_BOTH		6
 #define EINT_MASK		0xf
 
-static struct samsung_pin_bank_type bank_type_1bit = {
+static const struct samsung_pin_bank_type bank_type_1bit = {
 	.fld_width = { 1, 1, },
 	.reg_offset = { 0x00, 0x04, },
 };
 
-static struct samsung_pin_bank_type bank_type_2bit = {
+static const struct samsung_pin_bank_type bank_type_2bit = {
 	.fld_width = { 2, 1, 2, },
 	.reg_offset = { 0x00, 0x04, 0x08, },
 };
@@ -85,7 +80,7 @@ static struct samsung_pin_bank_type bank_type_2bit = {
 	}
 
 /**
- * struct s3c24xx_eint_data: EINT common data
+ * struct s3c24xx_eint_data - EINT common data
  * @drvdata: pin controller driver data
  * @domains: IRQ domains of particular EINT interrupts
  * @parents: mapped parent irqs in the main interrupt controller
@@ -97,10 +92,10 @@ struct s3c24xx_eint_data {
 };
 
 /**
- * struct s3c24xx_eint_domain_data: per irq-domain data
+ * struct s3c24xx_eint_domain_data - per irq-domain data
  * @bank: pin bank related to the domain
  * @eint_data: common data
- * eint0_3_parent_only: live eints 0-3 only in the main intc
+ * @eint0_3_parent_only: live eints 0-3 only in the main intc
  */
 struct s3c24xx_eint_domain_data {
 	struct samsung_pin_bank *bank;
@@ -113,37 +108,32 @@ static int s3c24xx_eint_get_trigger(unsigned int type)
 	switch (type) {
 	case IRQ_TYPE_EDGE_RISING:
 		return EINT_EDGE_RISING;
-		break;
 	case IRQ_TYPE_EDGE_FALLING:
 		return EINT_EDGE_FALLING;
-		break;
 	case IRQ_TYPE_EDGE_BOTH:
 		return EINT_EDGE_BOTH;
-		break;
 	case IRQ_TYPE_LEVEL_HIGH:
 		return EINT_LEVEL_HIGH;
-		break;
 	case IRQ_TYPE_LEVEL_LOW:
 		return EINT_LEVEL_LOW;
-		break;
 	default:
 		return -EINVAL;
 	}
 }
 
-static void s3c24xx_eint_set_handler(unsigned int irq, unsigned int type)
+static void s3c24xx_eint_set_handler(struct irq_data *d, unsigned int type)
 {
 	/* Edge- and level-triggered interrupts need different handlers */
 	if (type & IRQ_TYPE_EDGE_BOTH)
-		__irq_set_handler_locked(irq, handle_edge_irq);
+		irq_set_handler_locked(d, handle_edge_irq);
 	else
-		__irq_set_handler_locked(irq, handle_level_irq);
+		irq_set_handler_locked(d, handle_level_irq);
 }
 
 static void s3c24xx_eint_set_function(struct samsung_pinctrl_drv_data *d,
 					struct samsung_pin_bank *bank, int pin)
 {
-	struct samsung_pin_bank_type *bank_type = bank->type;
+	const struct samsung_pin_bank_type *bank_type = bank->type;
 	unsigned long flags;
 	void __iomem *reg;
 	u8 shift;
@@ -155,14 +145,14 @@ static void s3c24xx_eint_set_function(struct samsung_pinctrl_drv_data *d,
 	shift = pin * bank_type->fld_width[PINCFG_TYPE_FUNC];
 	mask = (1 << bank_type->fld_width[PINCFG_TYPE_FUNC]) - 1;
 
-	spin_lock_irqsave(&bank->slock, flags);
+	raw_spin_lock_irqsave(&bank->slock, flags);
 
 	val = readl(reg);
 	val &= ~(mask << shift);
 	val |= bank->eint_func << shift;
 	writel(val, reg);
 
-	spin_unlock_irqrestore(&bank->slock, flags);
+	raw_spin_unlock_irqrestore(&bank->slock, flags);
 }
 
 static int s3c24xx_eint_type(struct irq_data *data, unsigned int type)
@@ -181,7 +171,7 @@ static int s3c24xx_eint_type(struct irq_data *data, unsigned int type)
 		return -EINVAL;
 	}
 
-	s3c24xx_eint_set_handler(data->irq, type);
+	s3c24xx_eint_set_handler(data, type);
 
 	/* Set up interrupt trigger */
 	reg = d->virt_base + EINT_REG(index);
@@ -240,18 +230,16 @@ static struct irq_chip s3c2410_eint0_3_chip = {
 	.irq_set_type	= s3c24xx_eint_type,
 };
 
-static void s3c2410_demux_eint0_3(unsigned int irq, struct irq_desc *desc)
+static void s3c2410_demux_eint0_3(struct irq_desc *desc)
 {
 	struct irq_data *data = irq_desc_get_irq_data(desc);
-	struct s3c24xx_eint_data *eint_data = irq_get_handler_data(irq);
-	unsigned int virq;
+	struct s3c24xx_eint_data *eint_data = irq_desc_get_handler_data(desc);
+	int ret;
 
 	/* the first 4 eints have a simple 1 to 1 mapping */
-	virq = irq_linear_revmap(eint_data->domains[data->hwirq], data->hwirq);
+	ret = generic_handle_domain_irq(eint_data->domains[data->hwirq], data->hwirq);
 	/* Something must be really wrong if an unmapped EINT is unmasked */
-	BUG_ON(!virq);
-
-	generic_handle_irq(virq);
+	BUG_ON(ret);
 }
 
 /* Handling of EINTs 0-3 on S3C2412 and S3C2413 */
@@ -295,21 +283,19 @@ static struct irq_chip s3c2412_eint0_3_chip = {
 	.irq_set_type	= s3c24xx_eint_type,
 };
 
-static void s3c2412_demux_eint0_3(unsigned int irq, struct irq_desc *desc)
+static void s3c2412_demux_eint0_3(struct irq_desc *desc)
 {
-	struct irq_chip *chip = irq_get_chip(irq);
+	struct s3c24xx_eint_data *eint_data = irq_desc_get_handler_data(desc);
 	struct irq_data *data = irq_desc_get_irq_data(desc);
-	struct s3c24xx_eint_data *eint_data = irq_get_handler_data(irq);
-	unsigned int virq;
+	struct irq_chip *chip = irq_data_get_irq_chip(data);
+	int ret;
 
 	chained_irq_enter(chip, desc);
 
 	/* the first 4 eints have a simple 1 to 1 mapping */
-	virq = irq_linear_revmap(eint_data->domains[data->hwirq], data->hwirq);
+	ret = generic_handle_domain_irq(eint_data->domains[data->hwirq], data->hwirq);
 	/* Something must be really wrong if an unmapped EINT is unmasked */
-	BUG_ON(!virq);
-
-	generic_handle_irq(virq);
+	BUG_ON(ret);
 
 	chained_irq_exit(chip, desc);
 }
@@ -357,11 +343,11 @@ static struct irq_chip s3c24xx_eint_chip = {
 	.irq_set_type	= s3c24xx_eint_type,
 };
 
-static inline void s3c24xx_demux_eint(unsigned int irq, struct irq_desc *desc,
+static inline void s3c24xx_demux_eint(struct irq_desc *desc,
 				      u32 offset, u32 range)
 {
-	struct irq_chip *chip = irq_get_chip(irq);
-	struct s3c24xx_eint_data *data = irq_get_handler_data(irq);
+	struct s3c24xx_eint_data *data = irq_desc_get_handler_data(desc);
+	struct irq_chip *chip = irq_desc_get_chip(desc);
 	struct samsung_pinctrl_drv_data *d = data->drvdata;
 	unsigned int pend, mask;
 
@@ -374,28 +360,27 @@ static inline void s3c24xx_demux_eint(unsigned int irq, struct irq_desc *desc,
 	pend &= range;
 
 	while (pend) {
-		unsigned int virq;
+		unsigned int irq;
+		int ret;
 
 		irq = __ffs(pend);
 		pend &= ~(1 << irq);
-		virq = irq_linear_revmap(data->domains[irq], irq - offset);
+		ret = generic_handle_domain_irq(data->domains[irq], irq - offset);
 		/* Something is really wrong if an unmapped EINT is unmasked */
-		BUG_ON(!virq);
-
-		generic_handle_irq(virq);
+		BUG_ON(ret);
 	}
 
 	chained_irq_exit(chip, desc);
 }
 
-static void s3c24xx_demux_eint4_7(unsigned int irq, struct irq_desc *desc)
+static void s3c24xx_demux_eint4_7(struct irq_desc *desc)
 {
-	s3c24xx_demux_eint(irq, desc, 0, 0xf0);
+	s3c24xx_demux_eint(desc, 0, 0xf0);
 }
 
-static void s3c24xx_demux_eint8_23(unsigned int irq, struct irq_desc *desc)
+static void s3c24xx_demux_eint8_23(struct irq_desc *desc)
 {
-	s3c24xx_demux_eint(irq, desc, 8, 0xffff00);
+	s3c24xx_demux_eint(desc, 8, 0xffff00);
 }
 
 static irq_flow_handler_t s3c2410_eint_handlers[NUM_EINT_IRQ] = {
@@ -437,7 +422,6 @@ static int s3c24xx_gpf_irq_map(struct irq_domain *h, unsigned int virq,
 					 handle_edge_irq);
 	}
 	irq_set_chip_data(virq, bank);
-	set_irq_flags(virq, IRQF_VALID);
 	return 0;
 }
 
@@ -457,7 +441,6 @@ static int s3c24xx_gpg_irq_map(struct irq_domain *h, unsigned int virq,
 
 	irq_set_chip_and_handler(virq, &s3c24xx_eint_chip, handle_edge_irq);
 	irq_set_chip_data(virq, bank);
-	set_irq_flags(virq, IRQF_VALID);
 	return 0;
 }
 
@@ -497,8 +480,10 @@ static int s3c24xx_eint_init(struct samsung_pinctrl_drv_data *d)
 		return -ENODEV;
 
 	eint_data = devm_kzalloc(dev, sizeof(*eint_data), GFP_KERNEL);
-	if (!eint_data)
+	if (!eint_data) {
+		of_node_put(eint_np);
 		return -ENOMEM;
+	}
 
 	eint_data->drvdata = d;
 
@@ -510,16 +495,17 @@ static int s3c24xx_eint_init(struct samsung_pinctrl_drv_data *d)
 		irq = irq_of_parse_and_map(eint_np, i);
 		if (!irq) {
 			dev_err(dev, "failed to get wakeup EINT IRQ %d\n", i);
+			of_node_put(eint_np);
 			return -ENXIO;
 		}
 
 		eint_data->parents[i] = irq;
-		irq_set_chained_handler(irq, handlers[i]);
-		irq_set_handler_data(irq, eint_data);
+		irq_set_chained_handler_and_data(irq, handlers[i], eint_data);
 	}
+	of_node_put(eint_np);
 
-	bank = d->ctrl->pin_banks;
-	for (i = 0; i < d->ctrl->nr_banks; ++i, ++bank) {
+	bank = d->pin_banks;
+	for (i = 0; i < d->nr_banks; ++i, ++bank) {
 		struct s3c24xx_eint_domain_data *ddata;
 		unsigned int mask;
 		unsigned int irq;
@@ -539,7 +525,7 @@ static int s3c24xx_eint_init(struct samsung_pinctrl_drv_data *d)
 		ops = (bank->eint_offset == 0) ? &s3c24xx_gpf_irq_ops
 					       : &s3c24xx_gpg_irq_ops;
 
-		bank->irq_domain = irq_domain_add_linear(bank->of_node,
+		bank->irq_domain = irq_domain_create_linear(bank->fwnode,
 				bank->nr_pins, ops, ddata);
 		if (!bank->irq_domain) {
 			dev_err(dev, "wkup irq domain add failed\n");
@@ -561,7 +547,7 @@ static int s3c24xx_eint_init(struct samsung_pinctrl_drv_data *d)
 	return 0;
 }
 
-static struct samsung_pin_bank s3c2412_pin_banks[] = {
+static const struct samsung_pin_bank_data s3c2412_pin_banks[] __initconst = {
 	PIN_BANK_A(23, 0x000, "gpa"),
 	PIN_BANK_2BIT(11, 0x010, "gpb"),
 	PIN_BANK_2BIT(16, 0x020, "gpc"),
@@ -573,16 +559,20 @@ static struct samsung_pin_bank s3c2412_pin_banks[] = {
 	PIN_BANK_2BIT(13, 0x080, "gpj"),
 };
 
-struct samsung_pin_ctrl s3c2412_pin_ctrl[] = {
+static const struct samsung_pin_ctrl s3c2412_pin_ctrl[] __initconst = {
 	{
 		.pin_banks	= s3c2412_pin_banks,
 		.nr_banks	= ARRAY_SIZE(s3c2412_pin_banks),
 		.eint_wkup_init = s3c24xx_eint_init,
-		.label		= "S3C2412-GPIO",
 	},
 };
 
-static struct samsung_pin_bank s3c2416_pin_banks[] = {
+const struct samsung_pinctrl_of_match_data s3c2412_of_data __initconst = {
+	.ctrl		= s3c2412_pin_ctrl,
+	.num_ctrl	= ARRAY_SIZE(s3c2412_pin_ctrl),
+};
+
+static const struct samsung_pin_bank_data s3c2416_pin_banks[] __initconst = {
 	PIN_BANK_A(27, 0x000, "gpa"),
 	PIN_BANK_2BIT(11, 0x010, "gpb"),
 	PIN_BANK_2BIT(16, 0x020, "gpc"),
@@ -596,16 +586,20 @@ static struct samsung_pin_bank s3c2416_pin_banks[] = {
 	PIN_BANK_2BIT(2, 0x100, "gpm"),
 };
 
-struct samsung_pin_ctrl s3c2416_pin_ctrl[] = {
+static const struct samsung_pin_ctrl s3c2416_pin_ctrl[] __initconst = {
 	{
 		.pin_banks	= s3c2416_pin_banks,
 		.nr_banks	= ARRAY_SIZE(s3c2416_pin_banks),
 		.eint_wkup_init = s3c24xx_eint_init,
-		.label		= "S3C2416-GPIO",
 	},
 };
 
-static struct samsung_pin_bank s3c2440_pin_banks[] = {
+const struct samsung_pinctrl_of_match_data s3c2416_of_data __initconst = {
+	.ctrl		= s3c2416_pin_ctrl,
+	.num_ctrl	= ARRAY_SIZE(s3c2416_pin_ctrl),
+};
+
+static const struct samsung_pin_bank_data s3c2440_pin_banks[] __initconst = {
 	PIN_BANK_A(25, 0x000, "gpa"),
 	PIN_BANK_2BIT(11, 0x010, "gpb"),
 	PIN_BANK_2BIT(16, 0x020, "gpc"),
@@ -617,16 +611,20 @@ static struct samsung_pin_bank s3c2440_pin_banks[] = {
 	PIN_BANK_2BIT(13, 0x0d0, "gpj"),
 };
 
-struct samsung_pin_ctrl s3c2440_pin_ctrl[] = {
+static const struct samsung_pin_ctrl s3c2440_pin_ctrl[] __initconst = {
 	{
 		.pin_banks	= s3c2440_pin_banks,
 		.nr_banks	= ARRAY_SIZE(s3c2440_pin_banks),
 		.eint_wkup_init = s3c24xx_eint_init,
-		.label		= "S3C2440-GPIO",
 	},
 };
 
-static struct samsung_pin_bank s3c2450_pin_banks[] = {
+const struct samsung_pinctrl_of_match_data s3c2440_of_data __initconst = {
+	.ctrl		= s3c2440_pin_ctrl,
+	.num_ctrl	= ARRAY_SIZE(s3c2440_pin_ctrl),
+};
+
+static const struct samsung_pin_bank_data s3c2450_pin_banks[] __initconst = {
 	PIN_BANK_A(28, 0x000, "gpa"),
 	PIN_BANK_2BIT(11, 0x010, "gpb"),
 	PIN_BANK_2BIT(16, 0x020, "gpc"),
@@ -641,11 +639,15 @@ static struct samsung_pin_bank s3c2450_pin_banks[] = {
 	PIN_BANK_2BIT(2, 0x100, "gpm"),
 };
 
-struct samsung_pin_ctrl s3c2450_pin_ctrl[] = {
+static const struct samsung_pin_ctrl s3c2450_pin_ctrl[] __initconst = {
 	{
 		.pin_banks	= s3c2450_pin_banks,
 		.nr_banks	= ARRAY_SIZE(s3c2450_pin_banks),
 		.eint_wkup_init = s3c24xx_eint_init,
-		.label		= "S3C2450-GPIO",
 	},
+};
+
+const struct samsung_pinctrl_of_match_data s3c2450_of_data __initconst = {
+	.ctrl		= s3c2450_pin_ctrl,
+	.num_ctrl	= ARRAY_SIZE(s3c2450_pin_ctrl),
 };

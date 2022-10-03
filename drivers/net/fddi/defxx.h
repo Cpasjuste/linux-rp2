@@ -16,7 +16,7 @@
  *   LVS	Lawrence V. Stefani <lstefani@yahoo.com>
  *
  * Maintainers:
- *   macro	Maciej W. Rozycki <macro@linux-mips.org>
+ *   macro	Maciej W. Rozycki <macro@orcam.me.uk>
  *
  * Modification History:
  *		Date		Name	Description
@@ -27,6 +27,7 @@
  *		04 Aug 2003	macro		Converted to the DMA API.
  *		23 Oct 2006	macro		Big-endian host support.
  *		14 Dec 2006	macro		TURBOchannel support.
+ *		10 Mar 2021	macro		Dynamic MMIO vs port I/O.
  */
 
 #ifndef _DEFXX_H_
@@ -1481,9 +1482,11 @@ typedef union
 
 #define PI_ESIC_K_CSR_IO_LEN		0x40		/* 64 bytes */
 #define PI_ESIC_K_BURST_HOLDOFF_LEN	0x04		/* 4 bytes */
+#define PI_ESIC_K_ESIC_CSR_LEN		0x40		/* 64 bytes */
 
 #define PI_DEFEA_K_CSR_IO		0x000
 #define PI_DEFEA_K_BURST_HOLDOFF	0x040
+#define PI_ESIC_K_ESIC_CSR		0xC80
 
 #define PI_ESIC_K_SLOT_ID            	0xC80
 #define PI_ESIC_K_SLOT_CNTRL		0xC84
@@ -1556,7 +1559,7 @@ typedef union
 #define PI_BURST_HOLDOFF_V_RESERVED	1
 #define PI_BURST_HOLDOFF_V_MEM_MAP	0
 
-/* Define the implicit mask of the Memory Address Mask Register.  */
+/* Define the implicit mask of the Memory Address Compare registers.  */
 
 #define PI_MEM_ADD_MASK_M		0x3ff
 
@@ -1774,6 +1777,8 @@ typedef struct DFX_board_tag
 		int port;
 	} base;										/* base address */
 	struct device			*bus_dev;
+	/* Whether to use MMIO or port I/O.  */
+	bool				mmio;
 	u32				full_duplex_enb;				/* FDDI Full Duplex enable (1 == on, 2 == off) */
 	u32				req_ttrt;					/* requested TTRT value (in 80ns units) */
 	u32				burst_size;					/* adapter burst size (enumerated) */

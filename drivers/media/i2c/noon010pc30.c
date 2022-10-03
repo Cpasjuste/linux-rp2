@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Driver for SiliconFile NOON010PC30 CIF (1/11") Image Sensor with ISP
  *
@@ -6,19 +7,14 @@
  *
  * Initial register configuration based on a driver authored by
  * HeungJun Kim <riverful.kim@samsung.com>.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 #include <linux/delay.h>
-#include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
 #include <linux/regulator/consumer.h>
-#include <media/noon010pc30.h>
+#include <media/i2c/noon010pc30.h>
 #include <linux/videodev2.h>
 #include <linux/module.h>
 #include <media/v4l2-ctrls.h>
@@ -112,7 +108,7 @@ MODULE_PARM_DESC(debug, "Enable module debug trace. Set to 1 to enable.");
 #define REG_TERM		0xFFFF
 
 struct noon010_format {
-	enum v4l2_mbus_pixelcode code;
+	u32 code;
 	enum v4l2_colorspace colorspace;
 	u16 ispctl1_reg;
 };
@@ -134,8 +130,8 @@ struct noon010_info {
 	struct media_pad pad;
 	struct v4l2_ctrl_handler hdl;
 	struct regulator_bulk_data supply[NOON010_NUM_SUPPLIES];
-	u32 gpio_nreset;
-	u32 gpio_nstby;
+	struct gpio_desc *reset;
+	struct gpio_desc *stby;
 
 	/* Protects the struct members below */
 	struct mutex lock;
@@ -175,23 +171,23 @@ static const struct noon010_frmsize noon010_sizes[] = {
 /* Supported pixel formats. */
 static const struct noon010_format noon010_formats[] = {
 	{
-		.code		= V4L2_MBUS_FMT_YUYV8_2X8,
+		.code		= MEDIA_BUS_FMT_YUYV8_2X8,
 		.colorspace	= V4L2_COLORSPACE_JPEG,
 		.ispctl1_reg	= 0x03,
 	}, {
-		.code		= V4L2_MBUS_FMT_YVYU8_2X8,
+		.code		= MEDIA_BUS_FMT_YVYU8_2X8,
 		.colorspace	= V4L2_COLORSPACE_JPEG,
 		.ispctl1_reg	= 0x02,
 	}, {
-		.code		= V4L2_MBUS_FMT_VYUY8_2X8,
+		.code		= MEDIA_BUS_FMT_VYUY8_2X8,
 		.colorspace	= V4L2_COLORSPACE_JPEG,
 		.ispctl1_reg	= 0,
 	}, {
-		.code		= V4L2_MBUS_FMT_UYVY8_2X8,
+		.code		= MEDIA_BUS_FMT_UYVY8_2X8,
 		.colorspace	= V4L2_COLORSPACE_JPEG,
 		.ispctl1_reg	= 0x01,
 	}, {
-		.code		= V4L2_MBUS_FMT_RGB565_2X8_BE,
+		.code		= MEDIA_BUS_FMT_RGB565_2X8_BE,
 		.colorspace	= V4L2_COLORSPACE_JPEG,
 		.ispctl1_reg	= 0x40,
 	},
@@ -397,29 +393,33 @@ static int power_enable(struct noon010_info *info)
 		return 0;
 	}
 
-	if (gpio_is_valid(info->gpio_nstby))
-		gpio_set_value(info->gpio_nstby, 0);
+	/* Assert standby: line should be flagged active low in descriptor */
+	if (info->stby)
+		gpiod_set_value(info->stby, 1);
 
-	if (gpio_is_valid(info->gpio_nreset))
-		gpio_set_value(info->gpio_nreset, 0);
+	/* Assert reset: line should be flagged active low in descriptor */
+	if (info->reset)
+		gpiod_set_value(info->reset, 1);
 
 	ret = regulator_bulk_enable(NOON010_NUM_SUPPLIES, info->supply);
 	if (ret)
 		return ret;
 
-	if (gpio_is_valid(info->gpio_nreset)) {
+	/* De-assert reset and standby */
+	if (info->reset) {
 		msleep(50);
-		gpio_set_value(info->gpio_nreset, 1);
+		gpiod_set_value(info->reset, 0);
 	}
-	if (gpio_is_valid(info->gpio_nstby)) {
+	if (info->stby) {
 		udelay(1000);
-		gpio_set_value(info->gpio_nstby, 1);
+		gpiod_set_value(info->stby, 0);
 	}
-	if (gpio_is_valid(info->gpio_nreset)) {
+	/* Cycle reset: assert and deassert */
+	if (info->reset) {
 		udelay(1000);
-		gpio_set_value(info->gpio_nreset, 0);
+		gpiod_set_value(info->reset, 1);
 		msleep(100);
-		gpio_set_value(info->gpio_nreset, 1);
+		gpiod_set_value(info->reset, 0);
 		msleep(20);
 	}
 	info->power = 1;
@@ -442,11 +442,12 @@ static int power_disable(struct noon010_info *info)
 	if (ret)
 		return ret;
 
-	if (gpio_is_valid(info->gpio_nstby))
-		gpio_set_value(info->gpio_nstby, 0);
+	/* Assert standby and reset */
+	if (info->stby)
+		gpiod_set_value(info->stby, 1);
 
-	if (gpio_is_valid(info->gpio_nreset))
-		gpio_set_value(info->gpio_nreset, 0);
+	if (info->reset)
+		gpiod_set_value(info->reset, 1);
 
 	info->power = 0;
 
@@ -492,7 +493,7 @@ unlock:
 }
 
 static int noon010_enum_mbus_code(struct v4l2_subdev *sd,
-				  struct v4l2_subdev_fh *fh,
+				  struct v4l2_subdev_state *sd_state,
 				  struct v4l2_subdev_mbus_code_enum *code)
 {
 	if (code->index >= ARRAY_SIZE(noon010_formats))
@@ -502,15 +503,16 @@ static int noon010_enum_mbus_code(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int noon010_get_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+static int noon010_get_fmt(struct v4l2_subdev *sd,
+			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct noon010_info *info = to_noon010(sd);
 	struct v4l2_mbus_framefmt *mf;
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
-		if (fh) {
-			mf = v4l2_subdev_get_try_format(fh, 0);
+		if (sd_state) {
+			mf = v4l2_subdev_get_try_format(sd, sd_state, 0);
 			fmt->format = *mf;
 		}
 		return 0;
@@ -542,7 +544,8 @@ static const struct noon010_format *noon010_try_fmt(struct v4l2_subdev *sd,
 	return &noon010_formats[i];
 }
 
-static int noon010_set_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+static int noon010_set_fmt(struct v4l2_subdev *sd,
+			   struct v4l2_subdev_state *sd_state,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct noon010_info *info = to_noon010(sd);
@@ -557,8 +560,8 @@ static int noon010_set_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	fmt->format.field = V4L2_FIELD_NONE;
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
-		if (fh) {
-			mf = v4l2_subdev_get_try_format(fh, 0);
+		if (sd_state) {
+			mf = v4l2_subdev_get_try_format(sd, sd_state, 0);
 			*mf = fmt->format;
 		}
 		return 0;
@@ -640,7 +643,9 @@ static int noon010_log_status(struct v4l2_subdev *sd)
 
 static int noon010_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 {
-	struct v4l2_mbus_framefmt *mf = v4l2_subdev_get_try_format(fh, 0);
+	struct v4l2_mbus_framefmt *mf = v4l2_subdev_get_try_format(sd,
+								   fh->state,
+								   0);
 
 	mf->width = noon010_sizes[0].width;
 	mf->height = noon010_sizes[0].height;
@@ -663,13 +668,13 @@ static const struct v4l2_subdev_core_ops noon010_core_ops = {
 	.log_status	= noon010_log_status,
 };
 
-static struct v4l2_subdev_pad_ops noon010_pad_ops = {
+static const struct v4l2_subdev_pad_ops noon010_pad_ops = {
 	.enum_mbus_code	= noon010_enum_mbus_code,
 	.get_fmt	= noon010_get_fmt,
 	.set_fmt	= noon010_set_fmt,
 };
 
-static struct v4l2_subdev_video_ops noon010_video_ops = {
+static const struct v4l2_subdev_video_ops noon010_video_ops = {
 	.s_stream	= noon010_s_stream,
 };
 
@@ -719,7 +724,8 @@ static int noon010_probe(struct i2c_client *client,
 	mutex_init(&info->lock);
 	sd = &info->sd;
 	v4l2_i2c_subdev_init(sd, client, &noon010_ops);
-	strlcpy(sd->name, MODULE_NAME, sizeof(sd->name));
+	/* Static name; NEVER use in new drivers! */
+	strscpy(sd->name, MODULE_NAME, sizeof(sd->name));
 
 	sd->internal_ops = &noon010_subdev_internal_ops;
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
@@ -740,34 +746,24 @@ static int noon010_probe(struct i2c_client *client,
 		goto np_err;
 
 	info->i2c_reg_page	= -1;
-	info->gpio_nreset	= -EINVAL;
-	info->gpio_nstby	= -EINVAL;
 	info->curr_fmt		= &noon010_formats[0];
 	info->curr_win		= &noon010_sizes[0];
 
-	if (gpio_is_valid(pdata->gpio_nreset)) {
-		ret = devm_gpio_request_one(&client->dev, pdata->gpio_nreset,
-					    GPIOF_OUT_INIT_LOW,
-					    "NOON010PC30 NRST");
-		if (ret) {
-			dev_err(&client->dev, "GPIO request error: %d\n", ret);
-			goto np_err;
-		}
-		info->gpio_nreset = pdata->gpio_nreset;
-		gpio_export(info->gpio_nreset, 0);
+	/* Request reset asserted so we get put into reset */
+	info->reset = devm_gpiod_get(&client->dev, "reset", GPIOD_OUT_HIGH);
+	if (IS_ERR(info->reset)) {
+		ret = PTR_ERR(info->reset);
+		goto np_err;
 	}
+	gpiod_set_consumer_name(info->reset, "NOON010PC30 NRST");
 
-	if (gpio_is_valid(pdata->gpio_nstby)) {
-		ret = devm_gpio_request_one(&client->dev, pdata->gpio_nstby,
-					    GPIOF_OUT_INIT_LOW,
-					    "NOON010PC30 NSTBY");
-		if (ret) {
-			dev_err(&client->dev, "GPIO request error: %d\n", ret);
-			goto np_err;
-		}
-		info->gpio_nstby = pdata->gpio_nstby;
-		gpio_export(info->gpio_nstby, 0);
+	/* Request standby asserted so we get put into standby */
+	info->stby = devm_gpiod_get(&client->dev, "standby", GPIOD_OUT_HIGH);
+	if (IS_ERR(info->stby)) {
+		ret = PTR_ERR(info->stby);
+		goto np_err;
 	}
+	gpiod_set_consumer_name(info->reset, "NOON010PC30 STBY");
 
 	for (i = 0; i < NOON010_NUM_SUPPLIES; i++)
 		info->supply[i].supply = noon010_supply_name[i];
@@ -778,8 +774,8 @@ static int noon010_probe(struct i2c_client *client,
 		goto np_err;
 
 	info->pad.flags = MEDIA_PAD_FL_SOURCE;
-	sd->entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
-	ret = media_entity_init(&sd->entity, 1, &info->pad, 0);
+	sd->entity.function = MEDIA_ENT_F_CAM_SENSOR;
+	ret = media_entity_pads_init(&sd->entity, 1, &info->pad);
 	if (ret < 0)
 		goto np_err;
 

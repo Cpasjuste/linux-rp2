@@ -1,13 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 #ifndef _LINUX_SPMI_H
 #define _LINUX_SPMI_H
@@ -134,9 +126,6 @@ void spmi_controller_remove(struct spmi_controller *ctrl);
  *		this structure.
  * @probe:	binds this driver to a SPMI device.
  * @remove:	unbinds this driver from the SPMI device.
- * @shutdown:	standard shutdown callback used during powerdown/halt.
- * @suspend:	standard suspend callback used during system suspend.
- * @resume:	standard resume callback used during system resume.
  *
  * If PM runtime support is desired for a slave, a device driver can call
  * pm_runtime_put() from their probe() routine (and a balancing
@@ -149,6 +138,7 @@ struct spmi_driver {
 	struct device_driver driver;
 	int	(*probe)(struct spmi_device *sdev);
 	void	(*remove)(struct spmi_device *sdev);
+	void	(*shutdown)(struct spmi_device *sdev);
 };
 
 static inline struct spmi_driver *to_spmi_driver(struct device_driver *d)
@@ -156,7 +146,9 @@ static inline struct spmi_driver *to_spmi_driver(struct device_driver *d)
 	return container_of(d, struct spmi_driver, driver);
 }
 
-int spmi_driver_register(struct spmi_driver *sdrv);
+#define spmi_driver_register(sdrv) \
+	__spmi_driver_register(sdrv, THIS_MODULE)
+int __spmi_driver_register(struct spmi_driver *sdrv, struct module *owner);
 
 /**
  * spmi_driver_unregister() - unregister an SPMI client driver

@@ -617,7 +617,7 @@ static int broadsheet_spiflash_rewrite_sector(struct broadsheetfb_par *par,
 	int tail_start_addr;
 	int start_sector_addr;
 
-	sector_buffer = kzalloc(sizeof(char)*sector_size, GFP_KERNEL);
+	sector_buffer = kzalloc(sector_size, GFP_KERNEL);
 	if (!sector_buffer)
 		return -ENOMEM;
 
@@ -636,7 +636,7 @@ static int broadsheet_spiflash_rewrite_sector(struct broadsheetfb_par *par,
 		err = broadsheet_spiflash_read_range(par, start_sector_addr,
 						data_start_addr, sector_buffer);
 		if (err)
-			return err;
+			goto out;
 	}
 
 	/* now we copy our data into the right place in the sector buffer */
@@ -657,7 +657,7 @@ static int broadsheet_spiflash_rewrite_sector(struct broadsheetfb_par *par,
 		err = broadsheet_spiflash_read_range(par, tail_start_addr,
 			tail_len, sector_buffer + tail_start_addr);
 		if (err)
-			return err;
+			goto out;
 	}
 
 	/* if we got here we have the full sector that we want to rewrite. */
@@ -665,11 +665,13 @@ static int broadsheet_spiflash_rewrite_sector(struct broadsheetfb_par *par,
 	/* first erase the sector */
 	err = broadsheet_spiflash_erase_sector(par, start_sector_addr);
 	if (err)
-		return err;
+		goto out;
 
 	/* now write it */
 	err = broadsheet_spiflash_write_sector(par, start_sector_addr,
 					sector_buffer, sector_size);
+out:
+	kfree(sector_buffer);
 	return err;
 }
 
@@ -750,7 +752,7 @@ static ssize_t broadsheet_loadstore_waveform(struct device *dev,
 	if ((fw_entry->size < 8*1024) || (fw_entry->size > 64*1024)) {
 		dev_err(dev, "Invalid waveform\n");
 		err = -EINVAL;
-		goto err_failed;
+		goto err_fw;
 	}
 
 	mutex_lock(&(par->io_lock));
@@ -760,13 +762,15 @@ static ssize_t broadsheet_loadstore_waveform(struct device *dev,
 	mutex_unlock(&(par->io_lock));
 	if (err < 0) {
 		dev_err(dev, "Failed to store broadsheet waveform\n");
-		goto err_failed;
+		goto err_fw;
 	}
 
 	dev_info(dev, "Stored broadsheet waveform, size %zd\n", fw_entry->size);
 
-	return len;
+	err = len;
 
+err_fw:
+	release_firmware(fw_entry);
 err_failed:
 	return err;
 }
@@ -925,13 +929,11 @@ static void broadsheetfb_dpy_update(struct broadsheetfb_par *par)
 }
 
 /* this is called back from the deferred io workqueue */
-static void broadsheetfb_dpy_deferred_io(struct fb_info *info,
-				struct list_head *pagelist)
+static void broadsheetfb_dpy_deferred_io(struct fb_info *info, struct list_head *pagereflist)
 {
 	u16 y1 = 0, h = 0;
-	int prev_index = -1;
-	struct page *cur;
-	struct fb_deferred_io *fbdefio = info->fbdefio;
+	unsigned long prev_offset = ULONG_MAX;
+	struct fb_deferred_io_pageref *pageref;
 	int h_inc;
 	u16 yres = info->var.yres;
 	u16 xres = info->var.xres;
@@ -940,22 +942,22 @@ static void broadsheetfb_dpy_deferred_io(struct fb_info *info,
 	h_inc = DIV_ROUND_UP(PAGE_SIZE , xres);
 
 	/* walk the written page list and swizzle the data */
-	list_for_each_entry(cur, &fbdefio->pagelist, lru) {
-		if (prev_index < 0) {
+	list_for_each_entry(pageref, pagereflist, list) {
+		if (prev_offset == ULONG_MAX) {
 			/* just starting so assign first page */
-			y1 = (cur->index << PAGE_SHIFT) / xres;
+			y1 = pageref->offset / xres;
 			h = h_inc;
-		} else if ((prev_index + 1) == cur->index) {
+		} else if ((prev_offset + PAGE_SIZE) == pageref->offset) {
 			/* this page is consecutive so increase our height */
 			h += h_inc;
 		} else {
 			/* page not consecutive, issue previous update first */
 			broadsheetfb_dpy_update_pages(info->par, y1, y1 + h);
 			/* start over with our non consecutive page */
-			y1 = (cur->index << PAGE_SHIFT) / xres;
+			y1 = pageref->offset / xres;
 			h = h_inc;
 		}
-		prev_index = cur->index;
+		prev_offset = pageref->offset;
 	}
 
 	/* if we still have any pages to update we do so now */
@@ -1044,18 +1046,20 @@ static ssize_t broadsheetfb_write(struct fb_info *info, const char __user *buf,
 	return (err) ? err : count;
 }
 
-static struct fb_ops broadsheetfb_ops = {
+static const struct fb_ops broadsheetfb_ops = {
 	.owner		= THIS_MODULE,
 	.fb_read        = fb_sys_read,
 	.fb_write	= broadsheetfb_write,
 	.fb_fillrect	= broadsheetfb_fillrect,
 	.fb_copyarea	= broadsheetfb_copyarea,
 	.fb_imageblit	= broadsheetfb_imageblit,
+	.fb_mmap	= fb_deferred_io_mmap,
 };
 
 static struct fb_deferred_io broadsheetfb_defio = {
-	.delay		= HZ/4,
-	.deferred_io	= broadsheetfb_dpy_deferred_io,
+	.delay			= HZ/4,
+	.sort_pagereflist	= true,
+	.deferred_io		= broadsheetfb_dpy_deferred_io,
 };
 
 static int broadsheetfb_probe(struct platform_device *dev)
@@ -1212,7 +1216,6 @@ static struct platform_driver broadsheetfb_driver = {
 	.probe	= broadsheetfb_probe,
 	.remove = broadsheetfb_remove,
 	.driver	= {
-		.owner	= THIS_MODULE,
 		.name	= "broadsheetfb",
 	},
 };

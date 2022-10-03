@@ -1,12 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2008
  * Guennadi Liakhovetski, DENX Software Engineering, <lg@denx.de>
  *
  * Copyright 2004-2007 Freescale Semiconductor, Inc. All Rights Reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/module.h>
@@ -29,11 +26,11 @@
 #include <linux/dma/ipu-dma.h>
 #include <linux/backlight.h>
 
-#include <linux/platform_data/dma-imx.h>
+#include <linux/dma/imx-dma.h>
 #include <linux/platform_data/video-mx3fb.h>
 
 #include <asm/io.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #define MX3FB_NAME		"mx3_sdc_fb"
 
@@ -334,8 +331,7 @@ static void mx3fb_init_backlight(struct mx3fb_data *fbd)
 
 static void mx3fb_exit_backlight(struct mx3fb_data *fbd)
 {
-	if (fbd->bl)
-		backlight_device_unregister(fbd->bl);
+	backlight_device_unregister(fbd->bl);
 }
 
 static void mx3fb_dma_done(void *);
@@ -449,7 +445,6 @@ static void sdc_enable_channel(struct mx3fb_info *mx3_fbi)
 static void sdc_disable_channel(struct mx3fb_info *mx3_fbi)
 {
 	struct mx3fb_data *mx3fb = mx3_fbi->mx3fb;
-	uint32_t enabled;
 	unsigned long flags;
 
 	if (mx3_fbi->txd == NULL)
@@ -457,7 +452,7 @@ static void sdc_disable_channel(struct mx3fb_info *mx3_fbi)
 
 	spin_lock_irqsave(&mx3fb->lock, flags);
 
-	enabled = sdc_fb_uninit(mx3_fbi);
+	sdc_fb_uninit(mx3_fbi);
 
 	spin_unlock_irqrestore(&mx3fb->lock, flags);
 
@@ -513,7 +508,7 @@ static int sdc_init_panel(struct mx3fb_data *mx3fb, enum ipu_panel panel,
 			  uint16_t h_start_width, uint16_t h_sync_width,
 			  uint16_t h_end_width, uint16_t v_start_width,
 			  uint16_t v_sync_width, uint16_t v_end_width,
-			  struct ipu_di_signal_cfg sig)
+			  const struct ipu_di_signal_cfg *sig)
 {
 	unsigned long lock_flags;
 	uint32_t reg;
@@ -595,17 +590,17 @@ static int sdc_init_panel(struct mx3fb_data *mx3fb, enum ipu_panel panel,
 
 	/* DI settings */
 	old_conf = mx3fb_read_reg(mx3fb, DI_DISP_IF_CONF) & 0x78FFFFFF;
-	old_conf |= sig.datamask_en << DI_D3_DATAMSK_SHIFT |
-		sig.clksel_en << DI_D3_CLK_SEL_SHIFT |
-		sig.clkidle_en << DI_D3_CLK_IDLE_SHIFT;
+	old_conf |= sig->datamask_en << DI_D3_DATAMSK_SHIFT |
+		sig->clksel_en << DI_D3_CLK_SEL_SHIFT |
+		sig->clkidle_en << DI_D3_CLK_IDLE_SHIFT;
 	mx3fb_write_reg(mx3fb, old_conf, DI_DISP_IF_CONF);
 
 	old_conf = mx3fb_read_reg(mx3fb, DI_DISP_SIG_POL) & 0xE0FFFFFF;
-	old_conf |= sig.data_pol << DI_D3_DATA_POL_SHIFT |
-		sig.clk_pol << DI_D3_CLK_POL_SHIFT |
-		sig.enable_pol << DI_D3_DRDY_SHARP_POL_SHIFT |
-		sig.Hsync_pol << DI_D3_HSYNC_POL_SHIFT |
-		sig.Vsync_pol << DI_D3_VSYNC_POL_SHIFT;
+	old_conf |= sig->data_pol << DI_D3_DATA_POL_SHIFT |
+		sig->clk_pol << DI_D3_CLK_POL_SHIFT |
+		sig->enable_pol << DI_D3_DRDY_SHARP_POL_SHIFT |
+		sig->Hsync_pol << DI_D3_HSYNC_POL_SHIFT |
+		sig->Vsync_pol << DI_D3_VSYNC_POL_SHIFT;
 	mx3fb_write_reg(mx3fb, old_conf, DI_DISP_SIG_POL);
 
 	map = &di_mappings[mx3fb->disp_data_fmt];
@@ -736,7 +731,7 @@ static int mx3fb_unmap_video_memory(struct fb_info *fbi);
 
 /**
  * mx3fb_set_fix() - set fixed framebuffer parameters from variable settings.
- * @info:	framebuffer information pointer
+ * @fbi:	framebuffer information pointer
  * @return:	0 on success or negative error code on failure.
  */
 static int mx3fb_set_fix(struct fb_info *fbi)
@@ -744,7 +739,7 @@ static int mx3fb_set_fix(struct fb_info *fbi)
 	struct fb_fix_screeninfo *fix = &fbi->fix;
 	struct fb_var_screeninfo *var = &fbi->var;
 
-	strncpy(fix->id, "DISP3 BG", 8);
+	memcpy(fix->id, "DISP3 BG", 8);
 
 	fix->line_length = var->xres_virtual * var->bits_per_pixel / 8;
 
@@ -846,7 +841,7 @@ static int __set_par(struct fb_info *fbi, bool lock)
 		if (fbi->var.sync & FB_SYNC_SHARP_MODE)
 			mode = IPU_PANEL_SHARP_TFT;
 
-		dev_dbg(fbi->device, "pixclock = %ul Hz\n",
+		dev_dbg(fbi->device, "pixclock = %u Hz\n",
 			(u32) (PICOS2KHZ(fbi->var.pixclock) * 1000UL));
 
 		if (sdc_init_panel(mx3fb, mode,
@@ -859,7 +854,7 @@ static int __set_par(struct fb_info *fbi, bool lock)
 				   fbi->var.upper_margin,
 				   fbi->var.vsync_len,
 				   fbi->var.lower_margin +
-				   fbi->var.vsync_len, sig_cfg) != 0) {
+				   fbi->var.vsync_len, &sig_cfg) != 0) {
 			dev_err(fbi->device,
 				"mx3fb: Error initializing panel.\n");
 			return -EINVAL;
@@ -1109,6 +1104,8 @@ static void __blank(int blank, struct fb_info *fbi)
 
 /**
  * mx3fb_blank() - blank the display.
+ * @blank:	blank value for the panel
+ * @fbi:	framebuffer information pointer
  */
 static int mx3fb_blank(int blank, struct fb_info *fbi)
 {
@@ -1130,7 +1127,7 @@ static int mx3fb_blank(int blank, struct fb_info *fbi)
 /**
  * mx3fb_pan_display() - pan or wrap the display
  * @var:	variable screen buffer information.
- * @info:	framebuffer information pointer.
+ * @fbi:	framebuffer information pointer.
  *
  * We look only at xoffset, yoffset and the FB_VMODE_YWRAP flag
  */
@@ -1253,7 +1250,7 @@ static int mx3fb_pan_display(struct fb_var_screeninfo *var,
  * invoked by the core framebuffer driver to perform operations like
  * blitting, rectangle filling, copy regions and cursor definition.
  */
-static struct fb_ops mx3fb_ops = {
+static const struct fb_ops mx3fb_ops = {
 	.owner = THIS_MODULE,
 	.fb_set_par = mx3fb_set_par,
 	.fb_check_var = mx3fb_check_var,
@@ -1337,9 +1334,8 @@ static int mx3fb_map_video_memory(struct fb_info *fbi, unsigned int mem_len,
 	int retval = 0;
 	dma_addr_t addr;
 
-	fbi->screen_base = dma_alloc_writecombine(fbi->device,
-						  mem_len,
-						  &addr, GFP_DMA | GFP_KERNEL);
+	fbi->screen_base = dma_alloc_wc(fbi->device, mem_len, &addr,
+					GFP_DMA | GFP_KERNEL);
 
 	if (!fbi->screen_base) {
 		dev_err(fbi->device, "Cannot allocate %u bytes framebuffer memory\n",
@@ -1379,8 +1375,8 @@ err0:
  */
 static int mx3fb_unmap_video_memory(struct fb_info *fbi)
 {
-	dma_free_writecombine(fbi->device, fbi->fix.smem_len,
-			      fbi->screen_base, fbi->fix.smem_start);
+	dma_free_wc(fbi->device, fbi->fix.smem_len, fbi->screen_base,
+		    fbi->fix.smem_start);
 
 	fbi->screen_base = NULL;
 	mutex_lock(&fbi->mm_lock);
@@ -1392,9 +1388,12 @@ static int mx3fb_unmap_video_memory(struct fb_info *fbi)
 
 /**
  * mx3fb_init_fbinfo() - initialize framebuffer information object.
+ * @dev: the device
+ * @ops:	framebuffer device operations
  * @return:	initialized framebuffer structure.
  */
-static struct fb_info *mx3fb_init_fbinfo(struct device *dev, struct fb_ops *ops)
+static struct fb_info *mx3fb_init_fbinfo(struct device *dev,
+					 const struct fb_ops *ops)
 {
 	struct fb_info *fbi;
 	struct mx3fb_info *mx3fbi;
@@ -1432,7 +1431,6 @@ static int init_fb_chan(struct mx3fb_data *mx3fb, struct idmac_channel *ichan)
 	struct device *dev = mx3fb->dev;
 	struct mx3fb_platform_data *mx3fb_pdata = dev_get_platdata(dev);
 	const char *name = mx3fb_pdata->name;
-	unsigned int irq;
 	struct fb_info *fbi;
 	struct mx3fb_info *mx3fbi;
 	const struct fb_videomode *mode;
@@ -1445,7 +1443,6 @@ static int init_fb_chan(struct mx3fb_data *mx3fb, struct idmac_channel *ichan)
 	}
 
 	ichan->client = mx3fb;
-	irq = ichan->eof_irq;
 
 	if (ichan->dma_chan.chan_id != IDMAC_SDC_0)
 		return -EINVAL;
@@ -1646,7 +1643,6 @@ static int mx3fb_remove(struct platform_device *dev)
 static struct platform_driver mx3fb_driver = {
 	.driver = {
 		.name = MX3FB_NAME,
-		.owner = THIS_MODULE,
 	},
 	.probe = mx3fb_probe,
 	.remove = mx3fb_remove,

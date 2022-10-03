@@ -1,28 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  *  Driver for NEC VR4100 series Serial Interface Unit.
  *
  *  Copyright (C) 2004-2008  Yoichi Yuasa <yuasa@linux-mips.org>
  *
  *  Based on drivers/serial/8250.c, by Russell King.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-
-#if defined(CONFIG_SERIAL_VR41XX_CONSOLE) && defined(CONFIG_MAGIC_SYSRQ)
-#define SUPPORT_SYSRQ
-#endif
 
 #include <linux/console.h>
 #include <linux/errno.h>
@@ -37,7 +20,7 @@
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 
-#include <asm/io.h>
+#include <linux/io.h>
 #include <asm/vr41xx/siu.h>
 #include <asm/vr41xx/vr41xx.h>
 
@@ -521,20 +504,7 @@ static void siu_set_termios(struct uart_port *port, struct ktermios *new,
 	unsigned long flags;
 
 	c_cflag = new->c_cflag;
-	switch (c_cflag & CSIZE) {
-	case CS5:
-		lcr = UART_LCR_WLEN5;
-		break;
-	case CS6:
-		lcr = UART_LCR_WLEN6;
-		break;
-	case CS7:
-		lcr = UART_LCR_WLEN7;
-		break;
-	default:
-		lcr = UART_LCR_WLEN8;
-		break;
-	}
+	lcr = UART_LCR_WLEN(tty_get_char_size(c_cflag));
 
 	if (c_cflag & CSTOPB)
 		lcr |= UART_LCR_STOP;
@@ -681,7 +651,7 @@ static int siu_verify_port(struct uart_port *port, struct serial_struct *serial)
 	return 0;
 }
 
-static struct uart_ops siu_uart_ops = {
+static const struct uart_ops siu_uart_ops = {
 	.tx_empty	= siu_tx_empty,
 	.set_mctrl	= siu_set_mctrl,
 	.get_mctrl	= siu_get_mctrl,
@@ -760,7 +730,7 @@ static void wait_for_xmitr(struct uart_port *port)
 	}
 }
 
-static void siu_console_putchar(struct uart_port *port, int ch)
+static void siu_console_putchar(struct uart_port *port, unsigned char ch)
 {
 	wait_for_xmitr(port);
 	siu_write(port, UART_TX, ch);
@@ -882,6 +852,7 @@ static int siu_probe(struct platform_device *dev)
 		port = &siu_uart_ports[i];
 		port->ops = &siu_uart_ops;
 		port->dev = &dev->dev;
+		port->has_sysrq = IS_ENABLED(CONFIG_SERIAL_VR41XX_CONSOLE);
 
 		retval = uart_add_one_port(&siu_uart_driver, port);
 		if (retval < 0) {
@@ -954,7 +925,6 @@ static struct platform_driver siu_device_driver = {
 	.resume		= siu_resume,
 	.driver		= {
 		.name	= "SIU",
-		.owner	= THIS_MODULE,
 	},
 };
 

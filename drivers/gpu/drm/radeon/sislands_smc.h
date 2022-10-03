@@ -182,18 +182,27 @@ typedef struct SISLANDS_SMC_HW_PERFORMANCE_LEVEL SISLANDS_SMC_HW_PERFORMANCE_LEV
 
 struct SISLANDS_SMC_SWSTATE
 {
-    uint8_t                             flags;
-    uint8_t                             levelCount;
-    uint8_t                             padding2;
-    uint8_t                             padding3;
-    SISLANDS_SMC_HW_PERFORMANCE_LEVEL   levels[1];
+	uint8_t                             flags;
+	uint8_t                             levelCount;
+	uint8_t                             padding2;
+	uint8_t                             padding3;
+	SISLANDS_SMC_HW_PERFORMANCE_LEVEL   levels[];
 };
 
 typedef struct SISLANDS_SMC_SWSTATE SISLANDS_SMC_SWSTATE;
 
+struct SISLANDS_SMC_SWSTATE_SINGLE {
+	uint8_t                             flags;
+	uint8_t                             levelCount;
+	uint8_t                             padding2;
+	uint8_t                             padding3;
+	SISLANDS_SMC_HW_PERFORMANCE_LEVEL   level;
+};
+
 #define SISLANDS_SMC_VOLTAGEMASK_VDDC  0
 #define SISLANDS_SMC_VOLTAGEMASK_MVDD  1
 #define SISLANDS_SMC_VOLTAGEMASK_VDDCI 2
+#define SISLANDS_SMC_VOLTAGEMASK_VDDC_PHASE_SHEDDING 3
 #define SISLANDS_SMC_VOLTAGEMASK_MAX   4
 
 struct SISLANDS_SMC_VOLTAGEMASKTABLE
@@ -207,19 +216,19 @@ typedef struct SISLANDS_SMC_VOLTAGEMASKTABLE SISLANDS_SMC_VOLTAGEMASKTABLE;
 
 struct SISLANDS_SMC_STATETABLE
 {
-    uint8_t                             thermalProtectType;
-    uint8_t                             systemFlags;
-    uint8_t                             maxVDDCIndexInPPTable;
-    uint8_t                             extraFlags;
-    uint32_t                            lowSMIO[SISLANDS_MAX_NO_VREG_STEPS];
-    SISLANDS_SMC_VOLTAGEMASKTABLE       voltageMaskTable;
-    SISLANDS_SMC_VOLTAGEMASKTABLE       phaseMaskTable;
-    PP_SIslands_DPM2Parameters          dpm2Params;
-    SISLANDS_SMC_SWSTATE                initialState;
-    SISLANDS_SMC_SWSTATE                ACPIState;
-    SISLANDS_SMC_SWSTATE                ULVState;
-    SISLANDS_SMC_SWSTATE                driverState;
-    SISLANDS_SMC_HW_PERFORMANCE_LEVEL   dpmLevels[SISLANDS_MAX_SMC_PERFORMANCE_LEVELS_PER_SWSTATE - 1];
+	uint8_t					thermalProtectType;
+	uint8_t					systemFlags;
+	uint8_t					maxVDDCIndexInPPTable;
+	uint8_t					extraFlags;
+	uint32_t				lowSMIO[SISLANDS_MAX_NO_VREG_STEPS];
+	SISLANDS_SMC_VOLTAGEMASKTABLE		voltageMaskTable;
+	SISLANDS_SMC_VOLTAGEMASKTABLE		phaseMaskTable;
+	PP_SIslands_DPM2Parameters		dpm2Params;
+	struct SISLANDS_SMC_SWSTATE_SINGLE	initialState;
+	struct SISLANDS_SMC_SWSTATE_SINGLE      ACPIState;
+	struct SISLANDS_SMC_SWSTATE_SINGLE      ULVState;
+	SISLANDS_SMC_SWSTATE			driverState;
+	SISLANDS_SMC_HW_PERFORMANCE_LEVEL	dpmLevels[SISLANDS_MAX_SMC_PERFORMANCE_LEVELS_PER_SWSTATE];
 };
 
 typedef struct SISLANDS_SMC_STATETABLE SISLANDS_SMC_STATETABLE;
@@ -244,6 +253,31 @@ typedef struct SISLANDS_SMC_STATETABLE SISLANDS_SMC_STATETABLE;
 #define SI_SMC_SOFT_REGISTER_svi_rework_plat_type     0x118
 #define SI_SMC_SOFT_REGISTER_svi_rework_gpio_id_svd   0x11c
 #define SI_SMC_SOFT_REGISTER_svi_rework_gpio_id_svc   0x120
+
+struct PP_SIslands_FanTable
+{
+	uint8_t  fdo_mode;
+	uint8_t  padding;
+	int16_t  temp_min;
+	int16_t  temp_med;
+	int16_t  temp_max;
+	int16_t  slope1;
+	int16_t  slope2;
+	int16_t  fdo_min;
+	int16_t  hys_up;
+	int16_t  hys_down;
+	int16_t  hys_slope;
+	int16_t  temp_resp_lim;
+	int16_t  temp_curr;
+	int16_t  slope_curr;
+	int16_t  pwm_curr;
+	uint32_t refresh_period;
+	int16_t  fdo_max;
+	uint8_t  temp_src;
+	int8_t  padding2;
+};
+
+typedef struct PP_SIslands_FanTable PP_SIslands_FanTable;
 
 #define SMC_SISLANDS_LKGE_LUT_NUM_OF_TEMP_ENTRIES 16
 #define SMC_SISLANDS_LKGE_LUT_NUM_OF_VOLT_ENTRIES 32

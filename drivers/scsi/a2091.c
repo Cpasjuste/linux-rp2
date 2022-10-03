@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 #include <linux/types.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -8,11 +9,14 @@
 #include <linux/module.h>
 
 #include <asm/page.h>
-#include <asm/pgtable.h>
 #include <asm/amigaints.h>
 #include <asm/amigahw.h>
 
-#include "scsi.h"
+#include <scsi/scsi.h>
+#include <scsi/scsi_cmnd.h>
+#include <scsi/scsi_device.h>
+#include <scsi/scsi_eh.h>
+#include <scsi/scsi_tcq.h>
 #include "wd33c93.h"
 #include "a2091.h"
 
@@ -40,16 +44,17 @@ static irqreturn_t a2091_intr(int irq, void *data)
 
 static int dma_setup(struct scsi_cmnd *cmd, int dir_in)
 {
+	struct scsi_pointer *scsi_pointer = WD33C93_scsi_pointer(cmd);
 	struct Scsi_Host *instance = cmd->device->host;
 	struct a2091_hostdata *hdata = shost_priv(instance);
 	struct WD33C93_hostdata *wh = &hdata->wh;
 	struct a2091_scsiregs *regs = hdata->regs;
 	unsigned short cntr = CNTR_PDMD | CNTR_INTEN;
-	unsigned long addr = virt_to_bus(cmd->SCp.ptr);
+	unsigned long addr = virt_to_bus(scsi_pointer->ptr);
 
 	/* don't allow DMA if the physical address is bad */
 	if (addr & A2091_XFER_MASK) {
-		wh->dma_bounce_len = (cmd->SCp.this_residual + 511) & ~0x1ff;
+		wh->dma_bounce_len = (scsi_pointer->this_residual + 511) & ~0x1ff;
 		wh->dma_bounce_buffer = kmalloc(wh->dma_bounce_len,
 						GFP_KERNEL);
 
@@ -73,8 +78,8 @@ static int dma_setup(struct scsi_cmnd *cmd, int dir_in)
 
 		if (!dir_in) {
 			/* copy to bounce buffer for a write */
-			memcpy(wh->dma_bounce_buffer, cmd->SCp.ptr,
-			       cmd->SCp.this_residual);
+			memcpy(wh->dma_bounce_buffer, scsi_pointer->ptr,
+			       scsi_pointer->this_residual);
 		}
 	}
 
@@ -92,10 +97,10 @@ static int dma_setup(struct scsi_cmnd *cmd, int dir_in)
 
 	if (dir_in) {
 		/* invalidate any cache */
-		cache_clear(addr, cmd->SCp.this_residual);
+		cache_clear(addr, scsi_pointer->this_residual);
 	} else {
 		/* push any dirty cache */
-		cache_push(addr, cmd->SCp.this_residual);
+		cache_push(addr, scsi_pointer->this_residual);
 	}
 	/* start DMA */
 	regs->ST_DMA = 1;
@@ -107,6 +112,7 @@ static int dma_setup(struct scsi_cmnd *cmd, int dir_in)
 static void dma_stop(struct Scsi_Host *instance, struct scsi_cmnd *SCpnt,
 		     int status)
 {
+	struct scsi_pointer *scsi_pointer = WD33C93_scsi_pointer(SCpnt);
 	struct a2091_hostdata *hdata = shost_priv(instance);
 	struct WD33C93_hostdata *wh = &hdata->wh;
 	struct a2091_scsiregs *regs = hdata->regs;
@@ -139,28 +145,12 @@ static void dma_stop(struct Scsi_Host *instance, struct scsi_cmnd *SCpnt,
 	/* copy from a bounce buffer, if necessary */
 	if (status && wh->dma_bounce_buffer) {
 		if (wh->dma_dir)
-			memcpy(SCpnt->SCp.ptr, wh->dma_bounce_buffer,
-			       SCpnt->SCp.this_residual);
+			memcpy(scsi_pointer->ptr, wh->dma_bounce_buffer,
+			       scsi_pointer->this_residual);
 		kfree(wh->dma_bounce_buffer);
 		wh->dma_bounce_buffer = NULL;
 		wh->dma_bounce_len = 0;
 	}
-}
-
-static int a2091_bus_reset(struct scsi_cmnd *cmd)
-{
-	struct Scsi_Host *instance = cmd->device->host;
-
-	/* FIXME perform bus-specific reset */
-
-	/* FIXME 2: kill this function, and let midlayer fall back
-	   to the same action, calling wd33c93_host_reset() */
-
-	spin_lock_irq(instance->host_lock);
-	wd33c93_host_reset(cmd);
-	spin_unlock_irq(instance->host_lock);
-
-	return SUCCESS;
 }
 
 static struct scsi_host_template a2091_scsi_template = {
@@ -171,13 +161,13 @@ static struct scsi_host_template a2091_scsi_template = {
 	.proc_name		= "A2901",
 	.queuecommand		= wd33c93_queuecommand,
 	.eh_abort_handler	= wd33c93_abort,
-	.eh_bus_reset_handler	= a2091_bus_reset,
 	.eh_host_reset_handler	= wd33c93_host_reset,
 	.can_queue		= CAN_QUEUE,
 	.this_id		= 7,
 	.sg_tablesize		= SG_ALL,
 	.cmd_per_lun		= CMD_PER_LUN,
-	.use_clustering		= DISABLE_CLUSTERING
+	.dma_boundary		= PAGE_SIZE - 1,
+	.cmd_size		= sizeof(struct scsi_pointer),
 };
 
 static int a2091_probe(struct zorro_dev *z, const struct zorro_device_id *ent)

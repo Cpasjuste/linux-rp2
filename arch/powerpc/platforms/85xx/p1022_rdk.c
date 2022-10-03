@@ -12,7 +12,9 @@
  * kind, whether express or implied.
  */
 
+#include <linux/fsl/guts.h>
 #include <linux/pci.h>
+#include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <asm/div64.h>
 #include <asm/mpic.h>
@@ -21,7 +23,6 @@
 #include <sysdev/fsl_soc.h>
 #include <sysdev/fsl_pci.h>
 #include <asm/udbg.h>
-#include <asm/fsl_guts.h>
 #include "smp.h"
 
 #include "mpc85xx.h"
@@ -50,14 +51,14 @@ void p1022rdk_set_pixel_clock(unsigned int pixclock)
 	/* Map the global utilities registers. */
 	guts_np = of_find_compatible_node(NULL, NULL, "fsl,p1022-guts");
 	if (!guts_np) {
-		pr_err("p1022rdk: missing global utilties device node\n");
+		pr_err("p1022rdk: missing global utilities device node\n");
 		return;
 	}
 
 	guts = of_iomap(guts_np, 0);
 	of_node_put(guts_np);
 	if (!guts) {
-		pr_err("p1022rdk: could not map global utilties device\n");
+		pr_err("p1022rdk: could not map global utilities device\n");
 		return;
 	}
 
@@ -128,16 +129,12 @@ static void __init p1022_rdk_setup_arch(void)
 
 machine_arch_initcall(p1022_rdk, mpc85xx_common_publish_devices);
 
-machine_arch_initcall(p1022_rdk, swiotlb_setup_bus_notifier);
-
 /*
  * Called very early, device-tree isn't unflattened
  */
 static int __init p1022_rdk_probe(void)
 {
-	unsigned long root = of_get_flat_dt_root();
-
-	return of_flat_dt_is_compatible(root, "fsl,p1022rdk");
+	return of_machine_is_compatible("fsl,p1022rdk");
 }
 
 define_machine(p1022_rdk) {
@@ -150,7 +147,6 @@ define_machine(p1022_rdk) {
 	.pcibios_fixup_phb      = fsl_pcibios_fixup_phb,
 #endif
 	.get_irq		= mpic_get_irq,
-	.restart		= fsl_rstcr_restart,
 	.calibrate_decr		= generic_calibrate_decr,
 	.progress		= udbg_progress,
 };

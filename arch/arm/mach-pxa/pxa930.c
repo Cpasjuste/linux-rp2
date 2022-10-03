@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * linux/arch/arm/mach-pxa/pxa930.c
  *
  * Code specific to PXA930
  *
  * Copyright (C) 2007-2008 Marvell Internation Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/module.h>
@@ -16,8 +13,9 @@
 #include <linux/irq.h>
 #include <linux/gpio-pxa.h>
 #include <linux/platform_device.h>
+#include <linux/soc/pxa/cpu.h>
 
-#include <mach/pxa930.h>
+#include "pxa930.h"
 
 #include "devices.h"
 

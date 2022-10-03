@@ -1,15 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2012 Red Hat, Inc.
  * Copyright (C) 2012 Jeremy Kerr <jeremy.kerr@canonical.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/efi.h>
+#include <linux/delay.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
+#include <linux/mount.h>
 
 #include "internal.h"
 
@@ -47,12 +46,13 @@ static ssize_t efivarfs_file_write(struct file *file,
 
 	if (bytes == -ENOENT) {
 		drop_nlink(inode);
-		d_delete(file->f_dentry);
-		dput(file->f_dentry);
+		d_delete(file->f_path.dentry);
+		dput(file->f_path.dentry);
 	} else {
-		mutex_lock(&inode->i_mutex);
+		inode_lock(inode);
 		i_size_write(inode, datasize + sizeof(attributes));
-		mutex_unlock(&inode->i_mutex);
+		inode->i_mtime = current_time(inode);
+		inode_unlock(inode);
 	}
 
 	bytes = count;
@@ -72,6 +72,9 @@ static ssize_t efivarfs_file_read(struct file *file, char __user *userbuf,
 	void *data;
 	ssize_t size = 0;
 	int err;
+
+	while (!__ratelimit(&file->f_cred->user->ratelimit))
+		msleep(50);
 
 	err = efivar_entry_size(var, &datasize);
 

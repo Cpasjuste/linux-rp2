@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * MPC83xx suspend support
  *
  * Author: Scott Wood <scottwood@freescale.com>
  *
  * Copyright (c) 2006-2007 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published
- * by the Free Software Foundation.
  */
 
 #include <linux/pm.h>
@@ -15,6 +12,7 @@
 #include <linux/ioport.h>
 #include <linux/interrupt.h>
 #include <linux/wait.h>
+#include <linux/sched/signal.h>
 #include <linux/kthread.h>
 #include <linux/freezer.h>
 #include <linux/suspend.h>
@@ -324,17 +322,14 @@ static const struct platform_suspend_ops mpc83xx_suspend_ops = {
 static const struct of_device_id pmc_match[];
 static int pmc_probe(struct platform_device *ofdev)
 {
-	const struct of_device_id *match;
 	struct device_node *np = ofdev->dev.of_node;
 	struct resource res;
 	const struct pmc_type *type;
 	int ret = 0;
 
-	match = of_match_device(pmc_match, &ofdev->dev);
-	if (!match)
+	type = of_device_get_match_data(&ofdev->dev);
+	if (!type)
 		return -EINVAL;
-
-	type = match->data;
 
 	if (!of_device_is_available(np))
 		return -ENODEV;
@@ -352,7 +347,7 @@ static int pmc_probe(struct platform_device *ofdev)
 		return -ENODEV;
 
 	pmc_irq = irq_of_parse_and_map(np, 0);
-	if (pmc_irq != NO_IRQ) {
+	if (pmc_irq) {
 		ret = request_irq(pmc_irq, pmc_irq_handler, IRQF_SHARED,
 		                  "pmc", ofdev);
 
@@ -360,7 +355,7 @@ static int pmc_probe(struct platform_device *ofdev)
 			return -EBUSY;
 	}
 
-	pmc_regs = ioremap(res.start, sizeof(struct mpc83xx_pmc));
+	pmc_regs = ioremap(res.start, sizeof(*pmc_regs));
 
 	if (!pmc_regs) {
 		ret = -ENOMEM;
@@ -373,7 +368,7 @@ static int pmc_probe(struct platform_device *ofdev)
 		goto out_pmc;
 	}
 
-	clock_regs = ioremap(res.start, sizeof(struct mpc83xx_pmc));
+	clock_regs = ioremap(res.start, sizeof(*clock_regs));
 
 	if (!clock_regs) {
 		ret = -ENOMEM;
@@ -400,7 +395,7 @@ out_syscr:
 out_pmc:
 	iounmap(pmc_regs);
 out:
-	if (pmc_irq != NO_IRQ)
+	if (pmc_irq)
 		free_irq(pmc_irq, ofdev);
 
 	return ret;
@@ -435,16 +430,10 @@ static const struct of_device_id pmc_match[] = {
 static struct platform_driver pmc_driver = {
 	.driver = {
 		.name = "mpc83xx-pmc",
-		.owner = THIS_MODULE,
 		.of_match_table = pmc_match,
 	},
 	.probe = pmc_probe,
 	.remove = pmc_remove
 };
 
-static int pmc_init(void)
-{
-	return platform_driver_register(&pmc_driver);
-}
-
-module_init(pmc_init);
+builtin_platform_driver(pmc_driver);

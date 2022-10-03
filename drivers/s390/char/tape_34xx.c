@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *    tape device discipline for 3480/3490 tapes.
  *
@@ -353,10 +354,10 @@ tape_34xx_unit_check(struct tape_device *device, struct tape_request *request,
 	if ((
 		sense[0] == SENSE_DATA_CHECK      ||
 		sense[0] == SENSE_EQUIPMENT_CHECK ||
-		sense[0] == SENSE_EQUIPMENT_CHECK + SENSE_DEFERRED_UNIT_CHECK
+		sense[0] == (SENSE_EQUIPMENT_CHECK | SENSE_DEFERRED_UNIT_CHECK)
 	) && (
 		sense[1] == SENSE_DRIVE_ONLINE ||
-		sense[1] == SENSE_BEGINNING_OF_TAPE + SENSE_WRITE_MODE
+		sense[1] == (SENSE_BEGINNING_OF_TAPE | SENSE_WRITE_MODE)
 	)) {
 		switch (request->op) {
 		/*
@@ -773,13 +774,11 @@ tape_34xx_unit_check(struct tape_device *device, struct tape_request *request,
 			"occurred\n");
 		return tape_34xx_erp_failed(request, -EIO);
 	case 0x57:
-		if (device->cdev->id.driver_info == tape_3480) {
-			/* Attention intercept. */
-			return tape_34xx_erp_retry(request);
-		} else {
-			/* Global status intercept. */
-			return tape_34xx_erp_retry(request);
-		}
+		/*
+		 * 3480: Attention intercept.
+		 * 3490: Global status intercept.
+		 */
+		return tape_34xx_erp_retry(request);
 	case 0x5a:
 		/*
 		 * Tape length incompatible. The tape inserted is too long,
@@ -1192,7 +1191,6 @@ static struct ccw_driver tape_34xx_driver = {
 	.remove = tape_generic_remove,
 	.set_online = tape_34xx_online,
 	.set_offline = tape_generic_offline,
-	.freeze = tape_generic_pm_suspend,
 	.int_class = IRQIO_TAP,
 };
 

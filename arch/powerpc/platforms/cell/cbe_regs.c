@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * cbe_regs.c
  *
@@ -9,12 +10,12 @@
 #include <linux/percpu.h>
 #include <linux/types.h>
 #include <linux/export.h>
+#include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
+#include <linux/pgtable.h>
 
 #include <asm/io.h>
-#include <asm/pgtable.h>
-#include <asm/prom.h>
 #include <asm/ptrace.h>
 #include <asm/cell-regs.h>
 
@@ -22,7 +23,7 @@
  * Current implementation uses "cpu" nodes. We build our own mapping
  * array of cpu numbers to cpu nodes locally for now to allow interrupt
  * time code to have a fast path rather than call of_get_cpu_node(). If
- * we implement cpu hotplug, we'll have to install an appropriate norifier
+ * we implement cpu hotplug, we'll have to install an appropriate notifier
  * in order to release references to the cpu going away
  */
 static struct cbe_regs_map
@@ -53,7 +54,7 @@ static struct cbe_regs_map *cbe_find_map(struct device_node *np)
 	int i;
 	struct device_node *tmp_np;
 
-	if (strcasecmp(np->type, "spe")) {
+	if (!of_node_is_type(np, "spe")) {
 		for (i = 0; i < cbe_regs_map_count; i++)
 			if (cbe_regs_maps[i].cpu_node == np ||
 			    cbe_regs_maps[i].be_node == np)
@@ -70,8 +71,8 @@ static struct cbe_regs_map *cbe_find_map(struct device_node *np)
 		tmp_np = tmp_np->parent;
 		/* on a correct devicetree we wont get up to root */
 		BUG_ON(!tmp_np);
-	} while (strcasecmp(tmp_np->type, "cpu") &&
-		 strcasecmp(tmp_np->type, "be"));
+	} while (!of_node_is_type(tmp_np, "cpu") ||
+		 !of_node_is_type(tmp_np, "be"));
 
 	np->data = cbe_find_map(tmp_np);
 
@@ -164,7 +165,7 @@ u32 cbe_node_to_cpu(int node)
 }
 EXPORT_SYMBOL_GPL(cbe_node_to_cpu);
 
-static struct device_node *cbe_get_be_node(int cpu_id)
+static struct device_node *__init cbe_get_be_node(int cpu_id)
 {
 	struct device_node *np;
 
@@ -189,7 +190,7 @@ static struct device_node *cbe_get_be_node(int cpu_id)
 	return NULL;
 }
 
-void __init cbe_fill_regs_map(struct cbe_regs_map *map)
+static void __init cbe_fill_regs_map(struct cbe_regs_map *map)
 {
 	if(map->be_node) {
 		struct device_node *be, *np;

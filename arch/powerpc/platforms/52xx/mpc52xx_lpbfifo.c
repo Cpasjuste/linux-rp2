@@ -1,9 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * LocalPlus Bus FIFO driver for the Freescale MPC52xx.
  *
  * Copyright (C) 2009 Secret Lab Technologies Ltd.
- *
- * This file is released under the GPLv2
  *
  * Todo:
  * - Add support for multiple requests to be queued.
@@ -12,11 +11,12 @@
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/spinlock.h>
 #include <linux/module.h>
 #include <asm/io.h>
-#include <asm/prom.h>
 #include <asm/mpc52xx.h>
 #include <asm/time.h>
 
@@ -105,7 +105,7 @@ static void mpc52xx_lpbfifo_kick(struct mpc52xx_lpbfifo_request *req)
 		 *
 		 * Configure the watermarks so DMA will always complete correctly.
 		 * It may be worth experimenting with the ALARM value to see if
-		 * there is a performance impacit.  However, if it is wrong there
+		 * there is a performance impact.  However, if it is wrong there
 		 * is a risk of DMA not transferring the last chunk of data
 		 */
 		if (write) {
@@ -230,7 +230,7 @@ static irqreturn_t mpc52xx_lpbfifo_irq(int irq, void *dev_id)
 	int dma, write, poll_dma;
 
 	spin_lock_irqsave(&lpbfifo.lock, flags);
-	ts = get_tbl();
+	ts = mftb();
 
 	req = lpbfifo.req;
 	if (!req) {
@@ -308,7 +308,7 @@ static irqreturn_t mpc52xx_lpbfifo_irq(int irq, void *dev_id)
 	if (irq != 0) /* don't increment on polled case */
 		req->irq_count++;
 
-	req->irq_ticks += get_tbl() - ts;
+	req->irq_ticks += mftb() - ts;
 	spin_unlock_irqrestore(&lpbfifo.lock, flags);
 
 	/* Spinlock is released; it is now safe to call the callback */
@@ -331,7 +331,7 @@ static irqreturn_t mpc52xx_lpbfifo_bcom_irq(int irq, void *dev_id)
 	u32 ts;
 
 	spin_lock_irqsave(&lpbfifo.lock, flags);
-	ts = get_tbl();
+	ts = mftb();
 
 	req = lpbfifo.req;
 	if (!req || (req->flags & MPC52XX_LPBFIFO_FLAG_NO_DMA)) {
@@ -362,7 +362,7 @@ static irqreturn_t mpc52xx_lpbfifo_bcom_irq(int irq, void *dev_id)
 	lpbfifo.req = NULL;
 
 	/* Release the lock before calling out to the callback. */
-	req->irq_ticks += get_tbl() - ts;
+	req->irq_ticks += mftb() - ts;
 	spin_unlock_irqrestore(&lpbfifo.lock, flags);
 
 	if (req->callback)
@@ -568,11 +568,11 @@ static const struct of_device_id mpc52xx_lpbfifo_match[] = {
 	{ .compatible = "fsl,mpc5200-lpbfifo", },
 	{},
 };
+MODULE_DEVICE_TABLE(of, mpc52xx_lpbfifo_match);
 
 static struct platform_driver mpc52xx_lpbfifo_driver = {
 	.driver = {
 		.name = "mpc52xx-lpbfifo",
-		.owner = THIS_MODULE,
 		.of_match_table = mpc52xx_lpbfifo_match,
 	},
 	.probe = mpc52xx_lpbfifo_probe,

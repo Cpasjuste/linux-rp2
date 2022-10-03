@@ -19,11 +19,12 @@
 #include <linux/gfp.h>
 #include <linux/delay.h>
 #include <linux/libata.h>
+#include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/types.h>
 
 #include <asm/cacheflush.h>
-#include <asm/prom.h>
 #include <asm/mpc52xx.h>
 
 #include <linux/fsl/bestcomm/bestcomm.h>
@@ -736,9 +737,8 @@ static int mpc52xx_ata_probe(struct platform_device *op)
 	}
 
 	/* Prepare our private structure */
-	priv = devm_kzalloc(&op->dev, sizeof(*priv), GFP_ATOMIC);
+	priv = devm_kzalloc(&op->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv) {
-		dev_err(&op->dev, "error allocating private structure\n");
 		rv = -ENOMEM;
 		goto err1;
 	}
@@ -825,7 +825,8 @@ mpc52xx_ata_suspend(struct platform_device *op, pm_message_t state)
 {
 	struct ata_host *host = platform_get_drvdata(op);
 
-	return ata_host_suspend(host, state);
+	ata_host_suspend(host, state);
+	return 0;
 }
 
 static int
@@ -847,10 +848,10 @@ mpc52xx_ata_resume(struct platform_device *op)
 }
 #endif
 
-static struct of_device_id mpc52xx_ata_of_match[] = {
+static const struct of_device_id mpc52xx_ata_of_match[] = {
 	{ .compatible = "fsl,mpc5200-ata", },
 	{ .compatible = "mpc5200-ata", },
-	{},
+	{ /* sentinel */ }
 };
 
 
@@ -863,7 +864,6 @@ static struct platform_driver mpc52xx_ata_of_platform_driver = {
 #endif
 	.driver		= {
 		.name	= DRV_NAME,
-		.owner	= THIS_MODULE,
 		.of_match_table = mpc52xx_ata_of_match,
 	},
 };

@@ -10,18 +10,21 @@
  *
  */
 
+#include <linux/clkdev.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/clk-provider.h>
+#include <linux/gpio/machine.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/mfd/tc6387xb.h>
 #include <linux/mfd/tc6393xb.h>
 #include <linux/mfd/t7l66xb.h>
-#include <linux/mtd/nand.h>
+#include <linux/mtd/rawnand.h>
 #include <linux/mtd/partitions.h>
-#include <linux/usb/gpio_vbus.h>
 #include <linux/memblock.h>
+#include <linux/gpio/machine.h>
 
 #include <video/w100fb.h>
 
@@ -29,17 +32,16 @@
 #include <asm/mach/arch.h>
 #include <asm/mach-types.h>
 
-#include <mach/pxa25x.h>
-#include <mach/eseries-gpio.h>
-#include <mach/eseries-irq.h>
-#include <mach/audio.h>
+#include "pxa25x.h"
+#include "eseries-gpio.h"
+#include "eseries-irq.h"
+#include <linux/platform_data/asoc-pxa.h>
 #include <linux/platform_data/video-pxafb.h>
-#include <mach/udc.h>
+#include "udc.h"
 #include <linux/platform_data/irda-pxaficp.h>
 
 #include "devices.h"
 #include "generic.h"
-#include "clock.h"
 
 /* Only e800 has 128MB RAM */
 void __init eseries_fixup(struct tag *tags, char **cmdline)
@@ -50,18 +52,20 @@ void __init eseries_fixup(struct tag *tags, char **cmdline)
 		memblock_add(0xa0000000, SZ_64M);
 }
 
-struct gpio_vbus_mach_info e7xx_udc_info = {
-	.gpio_vbus   = GPIO_E7XX_USB_DISC,
-	.gpio_pullup = GPIO_E7XX_USB_PULLUP,
-	.gpio_pullup_inverted = 1
+static struct gpiod_lookup_table e7xx_gpio_vbus_gpiod_table __maybe_unused = {
+	.dev_id = "gpio-vbus",
+	.table = {
+		GPIO_LOOKUP("gpio-pxa", GPIO_E7XX_USB_DISC,
+			    "vbus", GPIO_ACTIVE_HIGH),
+		GPIO_LOOKUP("gpio-pxa", GPIO_E7XX_USB_PULLUP,
+			    "pullup", GPIO_ACTIVE_LOW),
+		{ },
+	},
 };
 
-static struct platform_device e7xx_gpio_vbus = {
+static struct platform_device e7xx_gpio_vbus __maybe_unused = {
 	.name	= "gpio-vbus",
 	.id	= -1,
-	.dev	= {
-		.platform_data	= &e7xx_udc_info,
-	},
 };
 
 struct pxaficp_platform_data e7xx_ficp_platform_data = {
@@ -125,27 +129,9 @@ struct resource eseries_tmio_resources[] = {
 };
 
 /* Some e-series hardware cannot control the 32K clock */
-static void clk_32k_dummy(struct clk *clk)
+static void __init __maybe_unused eseries_register_clks(void)
 {
-}
-
-static const struct clkops clk_32k_dummy_ops = {
-	.enable         = clk_32k_dummy,
-	.disable        = clk_32k_dummy,
-};
-
-static struct clk tmio_dummy_clk = {
-	.ops	= &clk_32k_dummy_ops,
-	.rate	= 32768,
-};
-
-static struct clk_lookup eseries_clkregs[] = {
-	INIT_CLKREG(&tmio_dummy_clk, NULL, "CLK_CK32K"),
-};
-
-static void __init eseries_register_clks(void)
-{
-	clkdev_add_table(eseries_clkregs, ARRAY_SIZE(eseries_clkregs));
+	clk_register_fixed_rate(NULL, "CLK_CK32K", NULL, 0, 32768);
 }
 
 #ifdef CONFIG_MACH_E330
@@ -182,6 +168,7 @@ static void __init e330_init(void)
 	pxa_set_stuart_info(NULL);
 	eseries_register_clks();
 	eseries_get_tmio_gpios();
+	gpiod_add_lookup_table(&e7xx_gpio_vbus_gpiod_table);
 	platform_add_devices(ARRAY_AND_SIZE(e330_devices));
 }
 
@@ -233,6 +220,7 @@ static void __init e350_init(void)
 	pxa_set_stuart_info(NULL);
 	eseries_register_clks();
 	eseries_get_tmio_gpios();
+	gpiod_add_lookup_table(&e7xx_gpio_vbus_gpiod_table);
 	platform_add_devices(ARRAY_AND_SIZE(e350_devices));
 }
 
@@ -357,6 +345,7 @@ static void __init e400_init(void)
 	eseries_register_clks();
 	eseries_get_tmio_gpios();
 	pxa_set_fb_info(NULL, &e400_pxafb_mach_info);
+	gpiod_add_lookup_table(&e7xx_gpio_vbus_gpiod_table);
 	platform_add_devices(ARRAY_AND_SIZE(e400_devices));
 }
 
@@ -532,6 +521,16 @@ static struct platform_device e740_audio_device = {
 	.id		= -1,
 };
 
+static struct gpiod_lookup_table e740_audio_gpio_table = {
+	.dev_id = "e740-audio",
+	.table = {
+		GPIO_LOOKUP("gpio-pxa",  GPIO_E740_WM9705_nAVDD2, "Audio power",  GPIO_ACTIVE_HIGH),
+		GPIO_LOOKUP("gpio-pxa",  GPIO_E740_AMP_ON, "Output amp",  GPIO_ACTIVE_HIGH),
+		GPIO_LOOKUP("gpio-pxa",  GPIO_E740_MIC_ON, "Mic amp", GPIO_ACTIVE_HIGH),
+		{ },
+	},
+};
+
 /* ----------------------------------------------------------------------- */
 
 static struct platform_device *e740_devices[] __initdata = {
@@ -551,6 +550,8 @@ static void __init e740_init(void)
 	clk_add_alias("CLK_CK48M", e740_t7l66xb_device.name,
 			"UDCCLK", &pxa25x_device_udc.dev),
 	eseries_get_tmio_gpios();
+	gpiod_add_lookup_table(&e7xx_gpio_vbus_gpiod_table);
+	gpiod_add_lookup_table(&e740_audio_gpio_table);
 	platform_add_devices(ARRAY_AND_SIZE(e740_devices));
 	pxa_set_ac97_info(NULL);
 	pxa_set_ficp_info(&e7xx_ficp_platform_data);
@@ -683,7 +684,7 @@ static unsigned long e750_pin_config[] __initdata = {
 	/* PC Card */
 	GPIO8_GPIO,   /* CD0 */
 	GPIO44_GPIO,  /* CD1 */
-	GPIO11_GPIO,  /* IRQ0 */
+	/* GPIO11_GPIO,  IRQ0 */
 	GPIO6_GPIO,   /* IRQ1 */
 	GPIO27_GPIO,  /* RST0 */
 	GPIO24_GPIO,  /* RST1 */
@@ -710,7 +711,6 @@ static struct tc6393xb_platform_data e750_tc6393xb_info = {
 	.irq_base       = IRQ_BOARD_START,
 	.scr_pll2cr     = 0x0cc1,
 	.scr_gper       = 0,
-	.gpio_base      = -1,
 	.suspend        = &eseries_tmio_suspend,
 	.resume         = &eseries_tmio_resume,
 	.enable         = &eseries_tmio_enable,
@@ -725,6 +725,15 @@ static struct platform_device e750_tc6393xb_device = {
 	},
 	.num_resources = 2,
 	.resource      = eseries_tmio_resources,
+};
+
+static struct gpiod_lookup_table e750_audio_gpio_table = {
+	.dev_id = "e750-audio",
+	.table = {
+		GPIO_LOOKUP("gpio-pxa",  GPIO_E750_HP_AMP_OFF, "Output amp",  GPIO_ACTIVE_LOW),
+		GPIO_LOOKUP("gpio-pxa",  GPIO_E750_SPK_AMP_OFF, "Mic amp", GPIO_ACTIVE_LOW),
+		{ },
+	},
 };
 
 static struct platform_device e750_audio_device = {
@@ -750,6 +759,8 @@ static void __init e750_init(void)
 	clk_add_alias("CLK_CK3P6MI", e750_tc6393xb_device.name,
 			"GPIO11_CLK", NULL),
 	eseries_get_tmio_gpios();
+	gpiod_add_lookup_table(&e7xx_gpio_vbus_gpiod_table);
+	gpiod_add_lookup_table(&e750_audio_gpio_table);
 	platform_add_devices(ARRAY_AND_SIZE(e750_devices));
 	pxa_set_ac97_info(NULL);
 	pxa_set_ficp_info(&e7xx_ficp_platform_data);
@@ -778,6 +789,9 @@ static unsigned long e800_pin_config[] __initdata = {
 	GPIO29_AC97_SDATA_IN_0,
 	GPIO30_AC97_SDATA_OUT,
 	GPIO31_AC97_SYNC,
+
+	/* tc6393xb */
+	GPIO11_3_6MHz,
 };
 
 static struct w100_gen_regs e800_lcd_regs = {
@@ -902,18 +916,20 @@ static struct platform_device e800_fb_device = {
 
 /* --------------------------- UDC definitions --------------------------- */
 
-static struct gpio_vbus_mach_info e800_udc_info = {
-	.gpio_vbus   = GPIO_E800_USB_DISC,
-	.gpio_pullup = GPIO_E800_USB_PULLUP,
-	.gpio_pullup_inverted = 1
+static struct gpiod_lookup_table e800_gpio_vbus_gpiod_table = {
+	.dev_id = "gpio-vbus",
+	.table = {
+		GPIO_LOOKUP("gpio-pxa", GPIO_E800_USB_DISC,
+			    "vbus", GPIO_ACTIVE_HIGH),
+		GPIO_LOOKUP("gpio-pxa", GPIO_E800_USB_PULLUP,
+			    "pullup", GPIO_ACTIVE_LOW),
+		{ },
+	},
 };
 
 static struct platform_device e800_gpio_vbus = {
 	.name	= "gpio-vbus",
 	.id	= -1,
-	.dev	= {
-		.platform_data	= &e800_udc_info,
-	},
 };
 
 
@@ -923,7 +939,6 @@ static struct tc6393xb_platform_data e800_tc6393xb_info = {
 	.irq_base       = IRQ_BOARD_START,
 	.scr_pll2cr     = 0x0cc1,
 	.scr_gper       = 0,
-	.gpio_base      = -1,
 	.suspend        = &eseries_tmio_suspend,
 	.resume         = &eseries_tmio_resume,
 	.enable         = &eseries_tmio_enable,
@@ -938,6 +953,15 @@ static struct platform_device e800_tc6393xb_device = {
 	},
 	.num_resources = 2,
 	.resource      = eseries_tmio_resources,
+};
+
+static struct gpiod_lookup_table e800_audio_gpio_table = {
+	.dev_id = "e800-audio",
+	.table = {
+		GPIO_LOOKUP("gpio-pxa",  GPIO_E800_HP_AMP_OFF, "Output amp",  GPIO_ACTIVE_LOW),
+		GPIO_LOOKUP("gpio-pxa",  GPIO_E800_SPK_AMP_ON, "Mic amp", GPIO_ACTIVE_HIGH),
+		{ },
+	},
 };
 
 static struct platform_device e800_audio_device = {
@@ -963,6 +987,8 @@ static void __init e800_init(void)
 	clk_add_alias("CLK_CK3P6MI", e800_tc6393xb_device.name,
 			"GPIO11_CLK", NULL),
 	eseries_get_tmio_gpios();
+	gpiod_add_lookup_table(&e800_gpio_vbus_gpiod_table);
+	gpiod_add_lookup_table(&e800_audio_gpio_table);
 	platform_add_devices(ARRAY_AND_SIZE(e800_devices));
 	pxa_set_ac97_info(NULL);
 }

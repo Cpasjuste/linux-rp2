@@ -43,6 +43,7 @@
 #include <asm/udbg.h>
 
 #include "mpc8xx.h"
+#include "pic.h"
 
 struct cpm_pin {
 	int port, pin, flags;
@@ -119,9 +120,7 @@ static void __init tqm8xx_setup_arch(void)
 
 static int __init tqm8xx_probe(void)
 {
-	unsigned long node = of_get_flat_dt_root();
-
-	return of_flat_dt_is_compatible(node, "tqc,tqm8xx");
+	return of_machine_is_compatible("tqc,tqm8xx");
 }
 
 static const struct of_device_id of_bus_ids[] __initconst = {
@@ -144,7 +143,7 @@ define_machine(tqm8xx) {
 	.name			= "TQM8xx",
 	.probe			= tqm8xx_probe,
 	.setup_arch		= tqm8xx_setup_arch,
-	.init_IRQ		= mpc8xx_pics_init,
+	.init_IRQ		= mpc8xx_pic_init,
 	.get_irq		= mpc8xx_get_irq,
 	.restart		= mpc8xx_restart,
 	.calibrate_decr		= mpc8xx_calibrate_decr,
