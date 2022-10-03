@@ -1,0 +1,158 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (c) 2015 MediaTek Inc.
+ * Author: Mars.C <mars.cheng@mediatek.com>
+ *
+ */
+
+/dts-v1/;
+#include "mt6580.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	model = "MediaTek MT6580 Retroid Pocket 2";
+	compatible = "mediatek,mt6580-pocket2", "mediatek,mt6580";
+
+	aliases {
+		serial0 = &uart0;
+		serial1 = &uart1;
+	};
+
+	chosen {
+        bootargs = "console=tty0 no_console_suspend=1 console=ttyS0,921600n8 console=ttyMT0,921600n1 root=/dev/ram initrd=0x84000000,0x400000 loglevel=8 ramoops.mem_address=0x83f10000 ramoops.mem_size=0xe0000 ramoops.console_size=0x10000";
+		linux,initrd-start = <0x84000000>;
+		linux,initrd-end = <0x85133837>;
+		stdout-path = "serial0:921600n8";
+        atag,videolfb-fb_base = <0x9E800000>;
+	    atag,videolfb-islcmfound = <1>;
+	    atag,videolfb-fps= <6000>;
+	    atag,videolfb-vramSize= <0x01800000>;
+	    atag,videolfb-lcmname= "st7703_800x640";
+	};
+
+	cpu_opp_table: opp-table {
+		compatible = "operating-points-v2";
+		opp-shared;
+
+		opp-98000000 {
+			opp-hz = /bits/ 64 <98000000>;
+			opp-microvolt = <1050000>;
+		};
+
+		opp-198000000 {
+			opp-hz = /bits/ 64 <198000000>;
+			opp-microvolt = <1050000>;
+		};
+
+		opp-398000000 {
+			opp-hz = /bits/ 64 <398000000>;
+			opp-microvolt = <1050000>;
+		};
+
+		opp-598000000 {
+			opp-hz = /bits/ 64 <598000000>;
+			opp-microvolt = <1050000>;
+		};
+
+		opp-747500000 {
+			opp-hz = /bits/ 64 <747500000>;
+			opp-microvolt = <1050000>;
+		};
+
+		opp-1040000000 {
+			opp-hz = /bits/ 64 <1040000000>;
+			opp-microvolt = <1150000>;
+		};
+
+		opp-1196000000 {
+			opp-hz = /bits/ 64 <1196000000>;
+			opp-microvolt = <1200000>;
+		};
+
+		opp-1300000000 {
+			opp-hz = /bits/ 64 <1300000000>;
+			opp-microvolt = <1300000>;
+		};
+	};
+
+    cpus {
+        cpu@0 {
+//			reg = <0x0>;
+//			clocks = <&infracfg CLK_INFRA_CPUSEL>,
+//				 <&apmixedsys CLK_APMIXED_MAINPLL>;
+//			clock-names = "cpu", "intermediate";
+			operating-points-v2 = <&cpu_opp_table>;
+//			#cooling-cells = <2>;
+            clock-frequency = <0x6553f100>;
+        };
+        cpu@1 {
+//			reg = <0x1>;
+//			clocks = <&infracfg CLK_INFRA_CPUSEL>,
+//				 <&apmixedsys CLK_APMIXED_MAINPLL>;
+//			clock-names = "cpu", "intermediate";
+			operating-points-v2 = <&cpu_opp_table>;
+//			#cooling-cells = <2>;
+            clock-frequency = <0x6553f100>;
+        };
+        cpu@2 {
+//			reg = <0x2>;
+//			clocks = <&infracfg CLK_INFRA_CPUSEL>,
+//				 <&apmixedsys CLK_APMIXED_MAINPLL>;
+//			clock-names = "cpu", "intermediate";
+			operating-points-v2 = <&cpu_opp_table>;
+//			#cooling-cells = <2>;
+            clock-frequency = <0x6553f100>;
+        };
+        cpu@3 {
+//			reg = <0x3>;
+//			clocks = <&infracfg CLK_INFRA_CPUSEL>,
+//				 <&apmixedsys CLK_APMIXED_MAINPLL>;
+//			clock-names = "cpu", "intermediate";
+			operating-points-v2 = <&cpu_opp_table>;
+//			#cooling-cells = <2>;
+            clock-frequency = <0x6553f100>;
+        };
+    };
+/*
+	usb0: usb@11100000 {
+		compatible = "generic-xhci";
+		reg = <0x11100000 0x10000>;
+            interrupts = <0x0 0x4 0x4>;
+	};
+*/
+/*
+	extcon_usb: extcon_iddig {
+		compatible = "linux,extcon-usb-gpio";
+		id-gpio = <&pio 44 GPIO_ACTIVE_HIGH>;
+	};
+
+	usb_vbus: regulator@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "usb_vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&pio 45 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+*/
+	memory {
+		device_type = "memory";
+		reg = <0x80000000 0x20000000>;
+	};
+};
+
+&uart0 {
+	status = "okay";
+};
+/*
+&usb2 {
+	status = "okay";
+	usb_con: connector{
+		compatible = "usb-b-connector";
+		label = "micro-USB";
+		type = "micro";
+		extcon = <&extcon_usb>;
+		vbus-supply = <&usb_vbus>;
+	};
+};
+*/

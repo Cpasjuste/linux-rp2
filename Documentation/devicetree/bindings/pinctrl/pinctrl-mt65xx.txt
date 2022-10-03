@@ -7,6 +7,7 @@ Required properties:
 	"mediatek,mt2701-pinctrl", compatible with mt2701 pinctrl.
 	"mediatek,mt2712-pinctrl", compatible with mt2712 pinctrl.
 	"mediatek,mt6397-pinctrl", compatible with mt6397 pinctrl.
+	"mediatek,mt6580-pinctrl", compatible with mt6580 pinctrl.
 	"mediatek,mt7623-pinctrl", compatible with mt7623 pinctrl.
 	"mediatek,mt8127-pinctrl", compatible with mt8127 pinctrl.
 	"mediatek,mt8135-pinctrl", compatible with mt8135 pinctrl.

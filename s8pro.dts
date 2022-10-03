@@ -1,0 +1,116 @@
+/dts-v1/;
+// magic:		0xd00dfeed
+// totalsize:		0x92e (2350)
+// off_dt_struct:	0x38
+// off_dt_strings:	0x828
+// off_mem_rsvmap:	0x28
+// version:		17
+// last_comp_version:	16
+// boot_cpuid_phys:	0x0
+// size_dt_strings:	0x106
+// size_dt_struct:	0x7f0
+
+/ {
+    compatible = "mediatek,mt6580-s8pro", "mediatek,mt6580";
+    #address-cells = <0x00000001>;
+    #size-cells = <0x00000001>;
+    interrupt-parent = <0x00000001>;
+    model = "MediaTek MT6580 ZGPAX s8pro";
+    cpus {
+        #address-cells = <0x00000001>;
+        #size-cells = <0x00000000>;
+        cpu@0 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a7";
+            reg = <0x00000000>;
+            clock-frequency = <0x6553f100>;
+        };
+        cpu@1 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a7";
+            reg = <0x00000001>;
+            clock-frequency = <0x6553f100>;
+        };
+        cpu@2 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a7";
+            reg = <0x00000002>;
+            clock-frequency = <0x6553f100>;
+        };
+        cpu@3 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a7";
+            reg = <0x00000003>;
+            clock-frequency = <0x6553f100>;
+        };
+    };
+    dummy13m {
+        compatible = "fixed-clock";
+        clock-frequency = <0x00c65d40>;
+        #clock-cells = <0x00000000>;
+        phandle = <0x00000002>;
+    };
+    dummy32k {
+        compatible = "fixed-clock";
+        clock-frequency = <0x00007d00>;
+        #clock-cells = <0x00000000>;
+        phandle = <0x00000003>;
+    };
+    dummy26m {
+        compatible = "fixed-clock";
+        clock-frequency = <0x018cba80>;
+        #clock-cells = <0x00000000>;
+        phandle = <0x00000005>;
+    };
+    timer@10008000 {
+        compatible = "mediatek,mt6580-timer", "mediatek,mt6577-timer";
+        reg = <0x10008000 0x00000072>;
+        interrupts = <0x00000000 0x00000008 0x00000003>;
+        clocks = <0x00000002 0x00000084>;
+        clock-names = "system-clk", "rtc-clk";
+    };
+    interrupt-controller@10200100 {
+        compatible = "mediatek,mt6580-sysirq", "mediatek,mt6577-sysirq";
+        interrupt-controller;
+        #interrupt-cells = <0x00000003>;
+        interrupt-parent = <0x00000004>;
+        reg = <0x10200100 0x0000006a>;
+        phandle = <0x00000001>;
+    };
+    interrupt-controller@10211000 {
+        compatible = "arm,cortex-a7-gic";
+        interrupt-controller;
+        #interrupt-cells = <0x00000003>;
+        interrupt-parent = <0x00000004>;
+        reg = <0x10211000 0x10214000 0x00000003 0x00000002 0x31303035 0x00000000 0x3538302d 0x6b2c6d74>;
+        phandle = <0x00000004>;
+    };
+    serial@11005000 {
+        compatible = "mediatek,mt6580-uart", "mediatek,mt6577-uart";
+        reg = <0x11005000 0x00000072>;
+        interrupts = <0x00000000 0x00000004 0x00000005>;
+        clocks = <0x00000005>;
+        status = "okay";
+    };
+    serial@11006000 {
+        compatible = "mediatek,mt6580-uart", "mediatek,mt6577-uart";
+        reg = <0x11006000 0x00000072>;
+        interrupts = <0x00000000 0x00000004 0x00000009>;
+        clocks = <0x00000005>;
+        status = "disabled";
+    };
+    aliases {
+        serial0 = "/serial@11005000";
+        serial1 = "/serial@11006000";
+    };
+    chosen {
+        bootargs = "vmalloc=496M initrd=0x84000000,0x04000000 loglevel=8 console=ttyS0,921600n8 bootopt=64S3,32S1,32S1";
+        linux,initrd-start = <0x84000000>;
+        linux,initrd-end = <0x88000000>;
+        stdout-path = "serial0:921600n8";
+    };
+    memory {
+        device_type = "memory";
+        reg = <0x80000000 0x00000009>;
+    };
+};
