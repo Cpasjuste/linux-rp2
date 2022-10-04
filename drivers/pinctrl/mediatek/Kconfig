@@ -183,6 +183,13 @@ config PINCTRL_MT8365
 	default ARM64 && ARCH_MEDIATEK
 	select PINCTRL_MTK
 
+config PINCTRL_MT6580
+	bool "Mediatek MT6580 pin control"
+	depends on MACH_MT6580 || COMPILE_TEST
+	depends on OF
+	default MACH_MT6580
+	select PINCTRL_MTK
+
 config PINCTRL_MT8516
 	bool "Mediatek MT8516 pin control"
 	depends on OF

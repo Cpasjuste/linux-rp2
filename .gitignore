@@ -162,3 +162,7 @@ x509.genkey
 
 # Documentation toolchain
 sphinx_*/
+
+# pocket 2
+arch/arm/boot/zImage-dtb
+rr-boot.img

@@ -14,6 +14,7 @@
 #include "mtk-eint.h"
 
 #define NO_EINT_SUPPORT    255
+#define MTK_CHIP_TYPE_BASE          0
 #define MT_EDGE_SENSITIVE           0
 #define MT_LEVEL_SENSITIVE          1
 #define EINT_DBNC_SET_DBNC_BITS     4

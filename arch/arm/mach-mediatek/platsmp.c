@@ -29,6 +29,12 @@ static const struct mtk_smp_boot_info mtk_mt8135_tz_boot = {
 	{ 0x3f8, 0x3f8, 0x3f8 },
 };
 
+static const struct mtk_smp_boot_info mtk_mt6580_boot = {
+	0x10001000, 0x34,
+	{ 0x534c4131, 0x4c415332, 0x41534c33 },
+	{ 0x38, 0x3c, 0x40 },
+};
+
 static const struct mtk_smp_boot_info mtk_mt6589_boot = {
 	0x10002000, 0x34,
 	{ 0x534c4131, 0x4c415332, 0x41534c33 },
@@ -49,6 +55,7 @@ static const struct of_device_id mtk_tz_smp_boot_infos[] __initconst = {
 };
 
 static const struct of_device_id mtk_smp_boot_infos[] __initconst = {
+  { .compatible   = "mediatek,mt6580", .data = &mtk_mt6580_boot },
 	{ .compatible   = "mediatek,mt6589", .data = &mtk_mt6589_boot },
 	{ .compatible   = "mediatek,mt7623", .data = &mtk_mt7623_boot },
 	{ .compatible   = "mediatek,mt7629", .data = &mtk_mt7623_boot },
@@ -141,3 +148,14 @@ static const struct smp_operations mt6589_smp_ops __initconst = {
 	.smp_boot_secondary = mtk_boot_secondary,
 };
 CPU_METHOD_OF_DECLARE(mt6589_smp, "mediatek,mt6589-smp", &mt6589_smp_ops);
+
+static const struct smp_operations mt6580_smp_ops __initconst = {
+	.smp_prepare_cpus = mtk_smp_prepare_cpus,
+	.smp_boot_secondary = mtk_boot_secondary,
+#ifdef CONFIG_HOTPLUG_CPU
+  // TODO
+	//.cpu_kill = mt6580_cpu_kill,
+	//.cpu_die = mt6580_cpu_die,
+#endif
+};
+CPU_METHOD_OF_DECLARE(mt6580_smp, "mediatek,mt6580-smp", &mt6580_smp_ops);
